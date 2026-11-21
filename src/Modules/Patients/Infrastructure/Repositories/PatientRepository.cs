@@ -11,7 +11,11 @@ internal sealed class PatientRepository(PatientsDbContext context) : IPatientRep
     public async Task<Patient?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var patientId = new PatientId(id);
-        return await context.Patients.FirstOrDefaultAsync(p => p.Id == patientId, cancellationToken);
+        return await context.Patients
+            .Include(p => p.Allergies)
+            .Include(p => p.Absences)
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(p => p.Id == patientId, cancellationToken);
     }
 
     public async Task<IReadOnlyList<Patient>> ListAsync(CancellationToken cancellationToken = default) =>

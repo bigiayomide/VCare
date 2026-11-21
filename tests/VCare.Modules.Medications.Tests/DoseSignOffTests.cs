@@ -164,7 +164,8 @@ public class DoseSignOffTests
         var (world, order) = RoundAt(Eight);
 
         var result = await world.Medications.UpdateMedicationOrderStatusAsync(MedicationWorld.OtherResident,
-            order.Id.Value, "Discontinued", CancellationToken.None);
+            order.Id.Value, new UpdateMedicationOrderStatusRequest("Discontinued", "Course complete"), MedicationWorld.Carer,
+            CancellationToken.None);
 
         Assert.Equal(ErrorKind.NotFound, result.Error.Kind);
         Assert.Equal(global::Medications.Domain.Enum.OrderStatus.Active, order.Status);

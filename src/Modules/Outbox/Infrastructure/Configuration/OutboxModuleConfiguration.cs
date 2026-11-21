@@ -31,14 +31,19 @@ namespace Outbox.Infrastructure.Configuration
             });
             services.AddScoped<IOutboxRepository, OutboxRepository>();
 
-            // Both ends of the queue: the processor drains it through IOutboxService,
+            // Both ends of the queue: OutboxProcessor drains it through IOutboxService,
             // the other modules enqueue through IOutboxWriter. IOutboxService derives
             // from IOutboxWriter, but DI resolves by exact type and will not walk to
             // the base interface, so the base still needs its own registration --
             // forwarded, so both ends get the one instance.
             services.AddScoped<IOutboxService, OutboxService>();
             services.AddScoped<IOutboxWriter>(sp => sp.GetRequiredService<IOutboxService>());
-            services.AddHostedService<OutboxProcessor>();
+
+            // OutboxProcessor is not started. Verification and reset emails are sent
+            // directly now and nothing enqueues, so it polled every 10 seconds and
+            // could only fail the messages it claimed (Notifications no longer
+            // knows any payload type). Register it again when something enqueues:
+            //     services.AddHostedService<OutboxProcessor>();
             services.AddScoped<IOutboxParticipant, OutboxParticipant>();
             return services;
         }

@@ -13,10 +13,12 @@ namespace Medications.Application.Services
     internal class MedicationService( IMedicationOrderRepository _medicationOrder,
     IMedicalAdministrationRepository _medicalAdministrationRepository,
     ScheduleExpander _expander, IOutcomeRepository outcomeRepository,
-    ICurrentUser currentUser, IPatientDirectory patients, TimeProvider clock) : IMedicationService
+    ICurrentUser currentUser, IPatientDirectory patients, IStaffDirectory staff,
+    IResidentAllergies allergies, IResidentAbsences absences, ICareHomeClock homeClock) : IMedicationService
     {
-        // Dose times are wall-clock times in the home ("08:00"), so "now" is too.
-        private DateTime Now => clock.GetLocalNow().DateTime;
+        // Dose times are wall-clock times in the home ("08:00"), so "now" is the
+        // time in the caller's home, not on the server.
+        private Task<DateTime> NowAsync(CancellationToken token) => homeClock.NowAsync(currentUser.CareHomeId, token);
 
         public async Task<Result<CreateMedicationOrderResponse>>CreateMedicationOrderAsync( Guid patientId, CreateMedicationOrderRequest request, CancellationToken token)
         {
@@ -25,6 +27,11 @@ namespace Medications.Application.Services
             if (!await patients.ExistsAsync(patientId, token))
             {
                 return Result.Failure<CreateMedicationOrderResponse>(MedicationErrors.PatientNotFound);
+            }
+            var allergy = await CheckAllergiesAsync(patientId, request.MedicatioName, request.AllergyOverrideReason, token);
+            if (allergy.IsFailure)
+            {
+                return Result.Failure<CreateMedicationOrderResponse>(allergy.Error);
             }
             var route = RouteEnumChecker.MedicationRouteChecker(request.MedicationRoute);
             if (route.IsFailure)
@@ -60,7 +67,8 @@ namespace Medications.Application.Services
             request.PrnMinIntervalMinutes, request.PrnMaxDose24h,
             request.IsControlledDrug, status.Value,
             schedules,
-            Now, prnMaxDosesPer24h: request.PrnMaxDosesPer24h);
+            await NowAsync(token), prnMaxDosesPer24h: request.PrnMaxDosesPer24h,
+            createdByStaffId: currentUser.UserId, allergyOverrideReason: request.AllergyOverrideReason);
             if (medicationOrder.IsFailure)
             {
                 return Result.Failure<CreateMedicationOrderResponse>(medicationOrder.Error);
@@ -70,18 +78,21 @@ namespace Medications.Application.Services
             return Result.Success(new CreateMedicationOrderResponse(medicationOrder.Value.Id.Value, medicationOrder.Value.Medication));
         }
 
-        public async Task<Result>UpdateMedicationOrderStatusAsync(Guid patientId, Guid medicationOrderId, string status, CancellationToken token)
+        public async Task<Result>UpdateMedicationOrderStatusAsync(Guid patientId, Guid medicationOrderId,
+            UpdateMedicationOrderStatusRequest request, Guid staffId, CancellationToken token)
         {
             var medicationOrder = await GetForPatientAsync(patientId, medicationOrderId, token);
             if (medicationOrder is null)
             {
                 return Result.Failure(MedicationErrors.OrderNotFound);
             }
-            if (medicationOrder.Status != OrderStatus.Active)
+            var status = OrderStatusEnumCheker.OrderStatusCheker(request.Status);
+            if (status.IsFailure)
             {
-                return Result.Failure(Error.Conflict("Medications.OrderNotActive", "Cannot update status of a completed or cancelled order."));
+                return status;
             }
-            var statusResult = medicationOrder.UpdateStatus(status, Now);
+            // Which transitions are allowed, and the reason they need, is the order's rule.
+            var statusResult = medicationOrder.ChangeStatus(status.Value, staffId, request.Reason, await NowAsync(token));
             if (statusResult.IsFailure)
             {
                 return statusResult;
@@ -106,15 +117,19 @@ namespace Medications.Application.Services
             var orders = await _medicationOrder.ActiveBetween(patientId, day, day);
             var slots = orders.SelectMany(order => _expander.ExpandSchedule(order, day, day)).ToList();
 
-            var now = Now;
+            var now = await NowAsync(token);
             var recorded = (await _medicalAdministrationRepository
                 .ForResidentBetweenAsync(patientId, day, day, token))
                 .Where(a => a.ScheduledFor.HasValue)
                 .ToDictionary(a => (a.MedicationOrderId.Value, a.ScheduledFor!.Value));
+            // A dose due while the resident is in hospital or on leave is not the
+            // home's to give, so it is not left on anyone's list.
+            var away = await AwayDuringAsync(patientId, day, token);
 
             var outstanding = slots.Where(slot =>
                 !recorded.TryGetValue((slot.OrderId, slot.DueAt), out var record)
-                || (record.IsMissed && DoseWindow.CanStillBeRecorded(slot.DueAt, now)));
+                    ? !away.Any(a => a.Covers(slot.DueAt))
+                    : record.IsMissed && DoseWindow.CanStillBeRecorded(slot.DueAt, now));
             return Result.Success(outstanding);
         }
 
@@ -133,19 +148,21 @@ namespace Medications.Application.Services
             {
                 return Result.Failure<MedicationAdministrationResponse>(MedicationErrors.PrnUsesItsOwnEndpoint);
             }
-            if (order.Status != OrderStatus.Active)
-            {
-                return Result.Failure<MedicationAdministrationResponse>(Error.Conflict("Medications.OrderNotActive", "Order is not active."));
-            }
             var day = DateOnly.FromDateTime(scheduledFor);
-            var isSlot = _expander.ExpandSchedule(order,day,day).Any( s => s.ScheduleId == scheduleId && s.DueAt == scheduledFor);
+            var isSlot = _expander.ExpandPlanned(order,day,day).Any( s => s.ScheduleId == scheduleId && s.DueAt == scheduledFor);
             if (!isSlot)
             {
                 return Result.Failure<MedicationAdministrationResponse>(MedicationErrors.NotAScheduledSlot);
             }
+            // What matters is the order's status when the dose was due, not now: a
+            // dose due before a hold can still be recorded, one due during it cannot.
+            if (!order.WasActiveAt(scheduledFor))
+            {
+                return Result.Failure<MedicationAdministrationResponse>(MedicationErrors.OrderNotActiveThen);
+            }
 
             // One rule, shared with the MAR chart and the missed-dose recorder.
-            var now = Now;
+            var now = await NowAsync(token);
             if (!DoseWindow.HasOpened(scheduledFor, now))
             {
                 return Result.Failure<MedicationAdministrationResponse>(MedicationErrors.DoseNotYetDue(DoseWindow.OpensAt(scheduledFor)));
@@ -185,6 +202,15 @@ namespace Medications.Application.Services
             {
                 return Result.Failure<MedicationAdministrationResponse>(MedicationErrors.MissedIsRecordedBySystem);
             }
+            if (OutcomeCode.NeedsReason(outcome.Id) && reason is null)
+            {
+                return Result.Failure<MedicationAdministrationResponse>(MedicationErrors.OutcomeReasonRequired(outcome.Name));
+            }
+            var witness = await CheckWitnessAsync(order, outcome, request.WitnessStaffId, staffId, token);
+            if (witness.IsFailure)
+            {
+                return Result.Failure<MedicationAdministrationResponse>(witness.Error);
+            }
 
             MedicationAdministration administration;
             var existing = await _medicalAdministrationRepository.Find(orderId, scheduledFor);
@@ -196,7 +222,8 @@ namespace Medications.Application.Services
                 {
                     return Result.Failure<MedicationAdministrationResponse>(MedicationErrors.DoseAlreadyRecorded);
                 }
-                var resolved = existing.ResolveMissed(outcome.Id, staffId, administeredAt, reason!, request.Notes, now);
+                var resolved = existing.ResolveMissed(outcome.Id, staffId, administeredAt, reason!, request.Notes, now,
+                    request.WitnessStaffId);
                 if (resolved.IsFailure)
                 {
                     return Result.Failure<MedicationAdministrationResponse>(resolved.Error);
@@ -206,7 +233,8 @@ namespace Medications.Application.Services
             else
             {
                 var created = MedicationAdministration.Create(orderId, order.PatientId.Value, order.CareHomeId.Value, scheduledFor,
-                    administeredAt, outcome.Id, staffId, request.Notes, now, isLate, reason);
+                    administeredAt, outcome.Id, staffId, request.Notes, now, isLate, reason,
+                    witnessedByStaffId: request.WitnessStaffId);
                 if (created.IsFailure)
                 {
                     return Result.Failure<MedicationAdministrationResponse>(created.Error);
@@ -254,7 +282,7 @@ namespace Medications.Application.Services
                 return Result.Failure<MedicationAdministrationResponse>(MedicationErrors.PrnReasonRequired);
             }
 
-            var now = Now;
+            var now = await NowAsync(token);
             var administeredAt = request.AdministeredAt ?? now;
             if (administeredAt > now)
             {
@@ -280,9 +308,15 @@ namespace Medications.Application.Services
                 return Result.Failure<MedicationAdministrationResponse>(MedicationErrors.MissedIsRecordedBySystem);
             }
 
-            // Only a dose actually given counts towards the limits; an offer the
-            // resident refused does not.
-            if (outcome.Id == OutcomeCode.TakenId)
+            var witness = await CheckWitnessAsync(order, outcome, request.WitnessStaffId, staffId, token);
+            if (witness.IsFailure)
+            {
+                return Result.Failure<MedicationAdministrationResponse>(witness.Error);
+            }
+
+            // Only a dose the resident actually had counts towards the limits; an
+            // offer they refused does not.
+            if (OutcomeCode.CountsAsGiven(outcome.Id))
             {
                 var limit = await CheckPrnLimitsAsync(order, administeredAt, token);
                 if (limit.IsFailure)
@@ -293,7 +327,8 @@ namespace Medications.Application.Services
 
             var created = MedicationAdministration.Create(orderId, order.PatientId.Value, order.CareHomeId.Value, scheduledFor: null,
                 administeredAt, outcome.Id, staffId, request.Notes, now,
-                isLate: false, reason: request.Reason.Trim(), doseGiven: request.DoseGiven.Trim());
+                isLate: false, reason: request.Reason.Trim(), doseGiven: request.DoseGiven.Trim(),
+                witnessedByStaffId: request.WitnessStaffId);
             if (created.IsFailure)
             {
                 return Result.Failure<MedicationAdministrationResponse>(created.Error);
@@ -372,7 +407,10 @@ namespace Medications.Application.Services
                 )).ToList(),
                 order.Status,
                 order.CreatedAt,
-                order.PrnMaxDosesPer24h
+                order.PrnMaxDosesPer24h,
+                order.CreatedByStaffId,
+                order.AllergyOverrideReason,
+                ToResponse(order.StatusHistory)
             ));
         }
 
@@ -384,6 +422,46 @@ namespace Medications.Application.Services
             return order is not null && order.PatientId.Value == patientId ? order : null;
         }
 
+        internal static List<StatusChangeResponse> ToResponse(IEnumerable<OrderStatusChange> history) =>
+            [.. history.OrderBy(c => c.ChangedAt)
+                .Select(c => new StatusChangeResponse(c.From, c.To, c.ChangedAt, c.ChangedByStaffId, c.Reason))];
+
+        // A name match against the resident's recorded allergies. It is a safety
+        // net, not a drug-interaction check: "penicillin" catches
+        // phenoxymethylpenicillin but not amoxicillin. Matching by drug class needs
+        // coded medicines (dm+d), which orders do not carry yet.
+        private async Task<Result> CheckAllergiesAsync(Guid patientId, string medication, string? overrideReason, CancellationToken token)
+        {
+            if (string.IsNullOrWhiteSpace(medication))
+                return Result.Success();   // the order itself reports the missing name
+            var clash = (await allergies.ActiveSubstancesAsync(patientId, token))
+                .Select(a => a.Trim())
+                .FirstOrDefault(a => a.Length >= 3 && medication.Contains(a, StringComparison.OrdinalIgnoreCase));
+            if (clash is null || !string.IsNullOrWhiteSpace(overrideReason))
+                return Result.Success();
+            return Result.Failure(MedicationErrors.AllergyConflict(clash));
+        }
+
+        // A controlled drug taken out of the cupboard needs a second member of
+        // staff, from this home, who is not the person giving it.
+        private async Task<Result> CheckWitnessAsync(MedicationOrder order, OutcomeCode outcome, Guid? witnessId, Guid staffId,
+            CancellationToken token)
+        {
+            var needed = order.IsControlledDrug && OutcomeCode.NeedsControlledDrugWitness(outcome.Id);
+            if (witnessId is null || witnessId == Guid.Empty)
+                return needed ? Result.Failure(MedicationErrors.WitnessRequired) : Result.Success();
+            // A witness named on any dose is checked, needed or not: a recorded
+            // second signature has to be a real one.
+            if (witnessId == staffId)
+                return Result.Failure(MedicationErrors.WitnessMustBeSomeoneElse);
+            if (!await staff.ExistsAsync(witnessId.Value, token))
+                return Result.Failure(MedicationErrors.WitnessNotFound);
+            return Result.Success();
+        }
+
+        private Task<IReadOnlyList<ResidentAbsence>> AwayDuringAsync(Guid patientId, DateOnly day, CancellationToken token) =>
+            absences.OverlappingAsync([patientId], day.ToDateTime(TimeOnly.MinValue), day.ToDateTime(TimeOnly.MaxValue), token);
+
         private static MedicationAdministrationResponse ToResponse(MedicationAdministration a) => new(
             a.Id.Value,
             a.MedicationOrderId.Value,
@@ -394,6 +472,7 @@ namespace Medications.Application.Services
             a.Notes,
             a.IsLate,
             a.Reason,
-            a.DoseGiven);
+            a.DoseGiven,
+            a.WitnessedByStaffId);
     }
 }

@@ -30,8 +30,45 @@ internal sealed class PatientConfiguration : IEntityTypeConfiguration<Patient>
             .IsRequired();
         builder.HasIndex(p => p.CareHomeId);
 
+        builder.Property(p => p.AllergyStatus).HasConversion<string>().HasMaxLength(30);
+        builder.HasMany(p => p.Allergies).WithOne().HasForeignKey(a => a.PatientId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(p => p.Absences).WithOne().HasForeignKey(a => a.PatientId).OnDelete(DeleteBehavior.Cascade);
+
         // Domain events are behaviour, not persisted state.
         builder.Ignore(p => p.DomainEvents);
+    }
+}
+
+internal sealed class PatientAllergyConfiguration : IEntityTypeConfiguration<PatientAllergy>
+{
+    public void Configure(EntityTypeBuilder<PatientAllergy> builder)
+    {
+        builder.ToTable("PatientAllergies", PatientsDbContext.Schema);
+        builder.HasKey(a => a.Id);
+        // The id is set in code when the row is added to its parent; without this EF
+        // takes a set key for an existing row and updates nothing instead of inserting.
+        builder.Property(a => a.Id).ValueGeneratedNever();
+        builder.Property(a => a.Substance).HasMaxLength(PatientAllergy.SubstanceMaxLength).IsRequired();
+        builder.Property(a => a.Reaction).HasMaxLength(PatientAllergy.TextMaxLength);
+        builder.Property(a => a.RemovalReason).HasMaxLength(PatientAllergy.TextMaxLength);
+        builder.Property(a => a.Severity).HasConversion<string>().HasMaxLength(30);
+        builder.Ignore(a => a.IsActive);
+        builder.HasIndex(a => a.PatientId);
+    }
+}
+
+internal sealed class PatientAbsenceConfiguration : IEntityTypeConfiguration<PatientAbsence>
+{
+    public void Configure(EntityTypeBuilder<PatientAbsence> builder)
+    {
+        builder.ToTable("PatientAbsences", PatientsDbContext.Schema);
+        builder.HasKey(a => a.Id);
+        builder.Property(a => a.Id).ValueGeneratedNever();
+        builder.Property(a => a.Kind).HasConversion<string>().HasMaxLength(30);
+        builder.Property(a => a.Note).HasMaxLength(PatientAbsence.NoteMaxLength);
+        builder.Ignore(a => a.IsOpen);
+        // The missed-dose recorder asks "who was away between these times".
+        builder.HasIndex(a => new { a.PatientId, a.StartedAt });
     }
 }
 
@@ -41,6 +78,9 @@ internal sealed class PatientDocumentConfiguration : IEntityTypeConfiguration<Pa
     {
         builder.ToTable("PatientDocuments", PatientsDbContext.Schema);
         builder.HasKey(d => d.Id);
+        // Set in code (Guid.NewGuid()) and added to an already-loaded patient: EF read
+        // the set key as an existing row and every upload failed with 0 rows updated.
+        builder.Property(d => d.Id).ValueGeneratedNever();
         builder.Property(d => d.FileName).HasMaxLength(200).IsRequired();
         builder.Property(d => d.StorageKeyName).HasMaxLength(200).IsRequired();
         builder.Property(d => d.PatientId).IsRequired();

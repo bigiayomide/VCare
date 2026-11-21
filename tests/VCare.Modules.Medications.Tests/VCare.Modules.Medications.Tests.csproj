@@ -8,6 +8,6 @@
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Modules\Medications\Vcare.Modules.Medications.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Medications\VCare.Modules.Medications.csproj" />
   </ItemGroup>
 </Project>

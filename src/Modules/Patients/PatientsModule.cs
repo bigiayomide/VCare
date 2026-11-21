@@ -30,6 +30,9 @@ public static class PatientsModule
         // Other modules check a patient exists in the caller's home through this,
         // not by reaching into this module's tables.
         services.AddScoped<IPatientDirectory, PatientDirectory>();
+        services.AddScoped<IResidentAllergies, ResidentAllergies>();
+        services.AddScoped<IResidentAbsences, ResidentAbsences>();
+        services.AddScoped<ResidentRecordService>();
         var storageConfiguration = configuration.GetSection("Storage");
             services.AddOptions<StorageEntity>().Bind(storageConfiguration);
 

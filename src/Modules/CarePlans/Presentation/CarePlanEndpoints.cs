@@ -28,7 +28,11 @@ namespace CarePlans.Presentation
             Guid patientId, CancellationToken cancellationToken)
         {
             var response = await carePlanService.GetForPatientAsync(patientId, cancellationToken);
-            return response.Value == null ? TypedResults.NotFound() : TypedResults.Ok(response);
+            if (response.IsFailure)
+                return response.ToProblem();
+            // The plan itself, not the Result wrapper around it (which serialised as
+            // { value, isSuccess, error } and made every client unwrap it).
+            return response.Value is null ? TypedResults.NotFound() : TypedResults.Ok(response.Value);
         }
 
         public static async Task<IResult> CreateCarePlan(

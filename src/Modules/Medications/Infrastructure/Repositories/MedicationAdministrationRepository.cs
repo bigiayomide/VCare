@@ -66,7 +66,7 @@ namespace Medications.Infrastructure.Repositories
             return await medicationDbContext.MedicationAdministrations
                 .Where(a => a.MedicationOrderId == medicationOrderId
                          && a.ScheduledFor == null
-                         && a.OutcomeCodeId == OutcomeCode.TakenId
+                         && (a.OutcomeCodeId == OutcomeCode.TakenId || a.OutcomeCodeId == OutcomeCode.VomitedId)
                          && a.AdministeredAt >= from
                          && a.AdministeredAt <= to)
                 .Select(a => a.AdministeredAt!.Value)

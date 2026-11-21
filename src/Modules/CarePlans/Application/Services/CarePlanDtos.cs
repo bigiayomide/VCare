@@ -1,8 +1,8 @@
 namespace VCare.Modules.CarePlans.Application.Services;
 
-// The patient comes from the route, so a body can't create a plan for someone else.
+// The patient comes from the route, so a body can't create a plan for someone else;
+// the author is the signed-in caller, so a body can't name someone else either.
 public sealed record CreateCarePlanRequest(
-    Guid StaffId,
     string Goal,
     List<DiagnosisInput>? Diagnoses);
 

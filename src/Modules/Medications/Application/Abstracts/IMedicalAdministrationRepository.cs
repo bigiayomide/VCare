@@ -11,7 +11,7 @@ namespace Medications.Application.Abstracts
         /// by their slot, PRN ones (which have no slot) by when they were given.</summary>
         Task<List<MedicationAdministration>> ForResidentBetweenAsync(Guid patientId, DateOnly from, DateOnly to, CancellationToken cancellationToken);
 
-        /// <summary>When PRN doses of this order were actually given (outcome Taken)
+        /// <summary>When PRN doses of this order were actually given (Taken or Vomited)
         /// between the two times. What the minimum interval and 24-hour limit count.</summary>
         Task<List<DateTime>> PrnGivenTimesAsync(Guid orderId, DateTime from, DateTime to, CancellationToken cancellationToken);
 

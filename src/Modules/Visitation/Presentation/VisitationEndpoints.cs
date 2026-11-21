@@ -58,10 +58,11 @@ namespace Visitation.Presentation
             return response.IsFailure ? response.ToProblem() : TypedResults.NoContent();
         }
 
-        public static async Task<IResult>CheckIn(Guid patientId, Guid visitId, CheckInVisitRequest request,
+        // No body: the time is the server's and the staff member is the caller.
+        public static async Task<IResult>CheckIn(Guid patientId, Guid visitId,
             IVisitationService visitationService, CancellationToken token)
         {
-            var response = await visitationService.CheckInAsync(patientId,visitId,request,token);
+            var response = await visitationService.CheckInAsync(patientId,visitId,token);
             return response.IsFailure ? response.ToProblem() : TypedResults.NoContent();
         }
 

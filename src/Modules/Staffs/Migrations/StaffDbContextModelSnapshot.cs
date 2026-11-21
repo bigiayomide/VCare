@@ -144,6 +144,9 @@ namespace VCare.Modules.Staffs.Migrations
                     b.Property<DateTime?>("RevokedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime>("SessionStartedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("StaffId")
                         .HasColumnType("uniqueidentifier");
 
@@ -179,6 +182,16 @@ namespace VCare.Modules.Staffs.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DeactivatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DeactivatedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DeactivationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("Email")
                         .IsRequired()
@@ -228,7 +241,6 @@ namespace VCare.Modules.Staffs.Migrations
             modelBuilder.Entity("Staffs.Domain.Entity.StaffDocument", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("FileName")
@@ -310,6 +322,9 @@ namespace VCare.Modules.Staffs.Migrations
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeactivatedAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<string>("Email")
                         .HasMaxLength(256)

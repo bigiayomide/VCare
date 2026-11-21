@@ -14,6 +14,13 @@ public class VisitationServiceTests
     private static readonly Guid OtherResident = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000002");
     private static readonly Guid Carer = Guid.Parse("cccccccc-0000-0000-0000-000000000001");
     private static readonly DateOnly Day = new(2026, 11, 19);
+    private static readonly FixedClock Clock = new(new DateTime(2026, 11, 19, 9, 4, 0, DateTimeKind.Utc));
+
+    internal sealed class FixedClock(DateTime utcNow) : TimeProvider
+    {
+        public DateTime UtcNow { get; set; } = utcNow;
+        public override DateTimeOffset GetUtcNow() => new(UtcNow);
+    }
 
     private sealed class FakeVisits : IVisitRepository
     {
@@ -50,7 +57,7 @@ public class VisitationServiceTests
         visit.AssignVisit(new StaffId(Carer));
         visits.Visits.Add(visit);
         var known = new Known(Resident, OtherResident, Carer);
-        return (new VisitationService(visits, new FakeCurrentUser(), known, known), visits, visit);
+        return (new VisitationService(visits, new FakeCurrentUser(), known, known, Clock), visits, visit);
     }
 
     [Fact]
@@ -81,8 +88,7 @@ public class VisitationServiceTests
     {
         var (service, _, visit) = HomeWithOneVisit();
 
-        var result = await service.CheckInAsync(OtherResident, visit.Id.Value,
-            new CheckInVisitRequest(Day.ToDateTime(new TimeOnly(9, 0))), CancellationToken.None);
+        var result = await service.CheckInAsync(OtherResident, visit.Id.Value, CancellationToken.None);
 
         Assert.Equal(ErrorKind.NotFound, result.Error.Kind);
         Assert.Empty(visit.VisitRecords);
@@ -115,10 +121,33 @@ public class VisitationServiceTests
     {
         var (service, _, visit) = HomeWithOneVisit();
 
-        var result = await service.CheckInAsync(Resident, visit.Id.Value,
-            new CheckInVisitRequest(Day.ToDateTime(new TimeOnly(9, 0))), CancellationToken.None);
+        var result = await service.CheckInAsync(Resident, visit.Id.Value, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Single(visit.VisitRecords);
+    }
+
+    [Fact]
+    public async Task Check_in_is_timed_by_the_server_not_the_carers_device()
+    {
+        var (service, _, visit) = HomeWithOneVisit();
+
+        var result = await service.CheckInAsync(Resident, visit.Id.Value, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(Clock.UtcNow, visit.VisitRecords.Single().CheckedInAt);
+    }
+
+    [Fact]
+    public async Task Check_out_is_timed_by_the_server_not_the_carers_device()
+    {
+        var (service, _, visit) = HomeWithOneVisit();
+        await service.CheckInAsync(Resident, visit.Id.Value, CancellationToken.None);
+
+        var result = await service.CheckOutAsync(Resident, visit.Id.Value,
+            new CheckOutVisitRequest(true, true, true, "Given with breakfast", "Washed and dressed", "Ate well"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(Clock.UtcNow, visit.VisitRecords.Single().CheckedOutAt);
     }
 }

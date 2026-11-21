@@ -76,7 +76,7 @@ namespace Visitation.Domain.Entities
         }
 
         public Result CheckOut( StaffId staffId ,bool isMedicationCompleted, bool isPersonalCareCompleted, bool isFeedingTaskCompleted,
-        string medicationTaskNote, string personalCareTaskNote, string feedingTaskNote, DateTime? checkedOutAt = null)
+        string medicationTaskNote, string personalCareTaskNote, string feedingTaskNote, DateTime checkedOutAt)
         {
             var record = VisitRecords.FirstOrDefault(r => r.StaffId == staffId);
             if (record is null)

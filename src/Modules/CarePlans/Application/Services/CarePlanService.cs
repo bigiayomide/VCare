@@ -27,7 +27,7 @@ internal sealed class CarePlanService(ICarePlanRepository carePlanRepository, IC
         var carePlan = CarePlan.Create(
             patientId,
             request.Goal,
-            request.StaffId,
+            currentUser.UserId,
             currentUser.CareHomeId,
             request.Diagnoses?.Select(d => (d.Name, d.GoalDescription, d.Intervention)));
 

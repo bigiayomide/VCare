@@ -26,12 +26,12 @@ namespace Notifications.Application
             }
 
             var body = $"""
-                <p>Welcome to Vbook.</p>
+                <p>Welcome to VCare.</p>
                 <p>Verify your email address to activate your account:</p>
                 <p><a href="{url}">Verify my email</a></p>
                 <p>If you didn't create this account, you can ignore this message.</p>
                 """;
-            await emailSender.SendAsync(email,"Verify your Vbook email",body,cancellationToken);
+            await emailSender.SendAsync(email,"Verify your VCare email",body,cancellationToken);
             return Result.Success();
         }
 
@@ -43,11 +43,11 @@ namespace Notifications.Application
             }
 
             var body = $"""
-                <p>We received a request to reset your Vbook password.</p>
+                <p>We received a request to reset your VCare password.</p>
                 <p><a href="{url}">Reset my password</a></p>
                 <p>If you didn't request to change your password, you can ignore this message.</p>
                 """;
-            await emailSender.SendAsync(email,"Reset your Vbook password",body,cancellationToken);
+            await emailSender.SendAsync(email,"Reset your VCare password",body,cancellationToken);
             return Result.Success();
         }
     }

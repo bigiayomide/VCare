@@ -8,7 +8,7 @@ namespace Medications.Application.Services.Interfaces
     public interface IMedicationService
     {
         Task<Result<CreateMedicationOrderResponse>> CreateMedicationOrderAsync(Guid patientId, CreateMedicationOrderRequest request, CancellationToken token);
-        Task<Result>UpdateMedicationOrderStatusAsync(Guid patientId, Guid medicationOrderId, string status, CancellationToken token);
+        Task<Result>UpdateMedicationOrderStatusAsync(Guid patientId, Guid medicationOrderId, UpdateMedicationOrderStatusRequest request, Guid staffId, CancellationToken token);
         Task<Result<MedicationAdministrationResponse>> RecordAministration(Guid patientId, Guid orderId, Guid scheduleId,
             RecordAdministrationRequest request, Guid staffId, CancellationToken token);
         Task<Result<MedicationAdministrationResponse>> RecordPrnAdministration(Guid patientId, Guid orderId,

@@ -118,6 +118,9 @@ namespace Vcare.Modules.Medications.Migrations
                     b.Property<DateTime?>("ScheduledFor")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("WitnessedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CareHomeId");
@@ -134,11 +137,18 @@ namespace Vcare.Modules.Medications.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("AllergyOverrideReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<Guid>("CareHomeId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedByStaffId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateOnly?>("EndDate")
                         .HasColumnType("date");
@@ -201,6 +211,42 @@ namespace Vcare.Modules.Medications.Migrations
                     b.ToTable("MedicationOrder", "Medication");
                 });
 
+            modelBuilder.Entity("Medications.Domain.Entities.OrderStatusChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ChangedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("ChangedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("From")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<Guid>("MedicationOrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("To")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MedicationOrderId");
+
+                    b.ToTable("OrderStatusChange", "Medication");
+                });
+
             modelBuilder.Entity("Medications.Domain.Entities.OutcomeCode", b =>
                 {
                     b.Property<Guid>("Id")
@@ -237,6 +283,42 @@ namespace Vcare.Modules.Medications.Migrations
                             Id = new Guid("db5662a7-5f67-4890-841f-c567d890e123"),
                             DisplayLetter = "M",
                             Name = "Missed"
+                        },
+                        new
+                        {
+                            Id = new Guid("0b6f5e7a-91c2-4d3e-8f10-2a3b4c5d6e01"),
+                            DisplayLetter = "W",
+                            Name = "Withheld"
+                        },
+                        new
+                        {
+                            Id = new Guid("0b6f5e7a-91c2-4d3e-8f10-2a3b4c5d6e02"),
+                            DisplayLetter = "S",
+                            Name = "Asleep"
+                        },
+                        new
+                        {
+                            Id = new Guid("0b6f5e7a-91c2-4d3e-8f10-2a3b4c5d6e03"),
+                            DisplayLetter = "H",
+                            Name = "In hospital"
+                        },
+                        new
+                        {
+                            Id = new Guid("0b6f5e7a-91c2-4d3e-8f10-2a3b4c5d6e04"),
+                            DisplayLetter = "L",
+                            Name = "On leave"
+                        },
+                        new
+                        {
+                            Id = new Guid("0b6f5e7a-91c2-4d3e-8f10-2a3b4c5d6e05"),
+                            DisplayLetter = "O",
+                            Name = "Out of stock"
+                        },
+                        new
+                        {
+                            Id = new Guid("0b6f5e7a-91c2-4d3e-8f10-2a3b4c5d6e06"),
+                            DisplayLetter = "V",
+                            Name = "Vomited"
                         });
                 });
 
@@ -258,11 +340,22 @@ namespace Vcare.Modules.Medications.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Medications.Domain.Entities.OrderStatusChange", b =>
+                {
+                    b.HasOne("Medications.Domain.Entities.MedicationOrder", null)
+                        .WithMany("StatusHistory")
+                        .HasForeignKey("MedicationOrderId")
+                        .OnDelete(DeleteBehavior.ClientNoAction)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Medications.Domain.Entities.MedicationOrder", b =>
                 {
                     b.Navigation("Administrations");
 
                     b.Navigation("Schedule");
+
+                    b.Navigation("StatusHistory");
                 });
 #pragma warning restore 612, 618
         }

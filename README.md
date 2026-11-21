@@ -13,9 +13,12 @@ that every carer records against as they work.
 A care home signs up and gets an admin account. From there it can:
 
 - **Manage residents (patients):** profiles, photos and documents such as consent forms or hospital
-  letters.
+  letters. Allergies are recorded with the reaction and severity, and "no known allergies" is a
+  recorded answer, not the default. Time in hospital or on leave is recorded too.
 - **Manage staff:** carers and admins, each with their own login, profile and documents. New staff
-  confirm their email before they can sign in.
+  confirm their email before they can sign in. A role change takes effect at once, and a staff
+  member who leaves is deactivated: they can't sign in and every session they had ends. Their name
+  stays on everything they recorded.
 - **Keep a care plan for each resident:** their diagnoses, and for each one the goal and the
   intervention the staff should carry out.
 - **Run medication rounds:** record each prescription with its dose and schedule (times of day, days
@@ -27,10 +30,16 @@ A care home signs up and gets an admin account. From there it can:
   the order's minimum interval and 24-hour limit are enforced. Doses that fell due before an order
   was entered into VCare are not counted as missed. The result is a MAR chart (Medication
   Administration Record) for each resident, showing each dose's outcome. Stopped orders keep their
-  history.
+  history. An order can be held and restarted, with who did it and why; doses due while it was held
+  are not counted as missed. Besides taken and refused, a carer can record a dose as withheld (with
+  the clinical reason), asleep, out of stock or vomited. Doses due while the resident is in
+  hospital or on leave are recorded as such, not as missed. A controlled drug needs a second member
+  of staff as witness. A new order is checked against the resident's recorded allergies by name.
+  All dose times are times in the care home's own time zone.
 - **Schedule and record care visits:** book visits for a resident and assign staff to them. Each
   assigned carer checks in when they arrive and checks out when they leave, recording whether
-  medication, personal care and feeding were done, with a note for each.
+  medication, personal care and feeding were done, with a note for each. The server records the
+  check-in and check-out times; the client can't set them.
 
 Every care home only ever sees its own data. The care home and the staff member making a change
 come from their login, never from the request, so one home cannot read or write another's records.
@@ -59,7 +68,7 @@ tables or types. The host is a thin composition root that wires the modules toge
 | Medications | Medication orders, dose schedules, administrations, outcome codes, the MAR chart |
 | Visitation | Scheduled visits, staff assignment, check-in and check-out records |
 | Notifications | Sending email over SMTP |
-| Outbox | Messages written in the same transaction as the change that caused them, then delivered in the background, so an email is never lost or sent for a change that rolled back |
+| Outbox | A queue table written in the same transaction as the change that caused it. Emails are currently sent directly, so nothing is queued and the background drain is not started |
 
 Documents and profile images are stored in Amazon S3.
 
@@ -82,9 +91,10 @@ VCare/
 │       ├── Patients/
 │       ├── Staffs/
 │       └── Visitation/
-├── tests/
-│   ├── VCare.Modules.CarePlans.Tests/
-│   └── VCare.Modules.Patients.Tests/
+├── tests/                          # one test project per module, plus VCare.Api.Tests
+├── scripts/migrations.sh           # runs a dotnet-ef command for every module
+├── Dockerfile                      # Linux image of the API
+├── .github/workflows/ci.yml        # build, test, migration check, image build
 └── postman/                        # API collection and OpenAPI spec
 ```
 
@@ -130,6 +140,12 @@ keys:
 | `Hosting:ResetPasswordPageUrl` | Front-end page that asks for a new password. Password reset emails link here with `email` and `token` in the query string |
 | `Smtp:Host`, `Smtp:Port`, `Smtp:User`, `Smtp:Password`, `Smtp:FromAddress`, `Smtp:FromName`, `Smtp:UseSsl` | Outgoing email |
 | `Storage:BaseUrl`, `Storage:BucketName` | S3 storage for documents and images |
+| `Jwt:MaxSessionHours` (optional, default 12) | The longest a sign-in lasts, however often it is refreshed |
+| `BackgroundJobs:Enabled` (optional, default true) | Runs the missed-dose job. With several instances of the API, leave it on for one |
+
+Each care home has a time zone (an IANA name such as `Europe/London`), given when it registers
+and changed with `PUT /api/carehome/me`. Dose windows, missed doses and absences all use it. The
+migration that added it set existing care homes to `UTC`, so set the right zone for each one.
 
 ### Build and run
 
@@ -139,7 +155,26 @@ dotnet build
 dotnet run --project src/VCare.Api
 ```
 
-The OpenAPI document is served in Development at `https://localhost:7443/openapi/v1.json`.
+The OpenAPI document is served in Development at `https://localhost:7443/openapi/v1.json`, without
+signing in.
+
+### Docker
+
+```bash
+docker build --tag vcare-api .
+docker run -p 8080:8080 -e ConnectionStrings__Default="..." -e Jwt__Key="..." ... vcare-api
+```
+
+The container serves plain HTTP on port 8080; put TLS in front of it. Settings come from
+environment variables (`Section__Key`). Behind a proxy or load balancer, configure forwarded
+headers, so the sign-in rate limits see each client's address rather than the proxy's.
+
+### Health checks
+
+- `GET /health/live`: the process is running.
+- `GET /health/ready`: the database can be reached. Returns 503 when it can't.
+
+Both are open, for a load balancer or orchestrator.
 
 ### Migrations
 
@@ -160,21 +195,32 @@ dotnet ef database update \
   --context MedicationDbContext
 ```
 
-Run `database update` once for each module's context when setting up a new database. Install the
-tool once if needed with `dotnet tool install --global dotnet-ef`.
+Run `database update` once for each module's context when setting up a new database, or run all
+of them in order with:
+
+```bash
+scripts/migrations.sh update
+```
+
+`scripts/migrations.sh check` fails if any module's model has changed without a migration; CI runs
+it. Install the tool once if needed with `dotnet tool install --global dotnet-ef --version 10.0.5`.
 
 ## API overview
 
-Registration and the `/api/auth` routes are open. The other routes work on the caller's care home,
-which comes from their login token.
+Registration, the `/api/auth` routes and the health checks are open. Registration and the auth
+routes are rate limited per client address, and five wrong passwords lock an account for 15
+minutes. The other routes work on the caller's care home, which comes from their login token. A
+token stops working as soon as its holder is deactivated, changes role or resets their password.
 
 | Area | Routes |
 |---|---|
 | Registration | `POST /api/carehome` (register a care home and its admin) |
 | Auth | `/api/auth/login`, `/logout`, `/refresh`, `/verify-email`, `/verify-email/resend`, `/forgot-password`, `/Reset_password` |
 | Care home | `PUT /api/carehome/me` |
-| Staff | `/api/staff`, plus `/{staffId}/document` and `/{staffId}/profile-image` |
+| Staff | `/api/staff`, plus `/{staffId}/document`, `/{staffId}/profile-image`, `/{staffId}/deactivate` and `/{staffId}/reactivate` |
 | Patients | `/api/patient`, plus `/{patientId}/document` and `/{patientId}/profile-image` |
+| Allergies | `/api/patient/{patientId}/allergies`, `/allergies/none`, `/allergies/{allergyId}/remove` |
+| Absences | `/api/patient/{patientId}/absences` (start), `/absences/end` |
 | Care plans | `/api/patient/{patientId}/careplan` |
 | Medications | `/api/patient/{patientId}/medication`: orders, `/{orderId}/status`, `/due`, `/outstanding`, `/{orderId}/administrations/{scheduleId}`, `/{orderId}/prn-administrations` |
 | MAR chart | `/api/patient/{patientId}/Marchart` |

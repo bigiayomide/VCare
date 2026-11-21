@@ -80,7 +80,7 @@ public class MarChartTests
         await Sign(world, order, At(1, 8), "Taken", At(1, 8, 5));
         world.Clock.Now = At(2, 12);
         var stopped = await world.Medications.UpdateMedicationOrderStatusAsync(MedicationWorld.Resident, order.Id.Value,
-            "Discontinued", CancellationToken.None);
+            new UpdateMedicationOrderStatusRequest("Discontinued", "Course complete"), MedicationWorld.Carer, CancellationToken.None);
         Assert.True(stopped.IsSuccess);
         world.Clock.Now = At(5, 12);
 
@@ -130,7 +130,7 @@ public class MissedDoseRecorderTests
         var world = new MedicationWorld(At(19, 9, 35));
         world.AddDailyOrder(new DateOnly(2026, 11, 16), At(19, 9, 30), new TimeOnly(8, 0), new TimeOnly(20, 0));
 
-        var recorded = await world.Recorder.RecordMissedDosesAsync(At(19, 9, 35), CancellationToken.None);
+        var recorded = await world.Recorder.RecordMissedDosesAsync(CancellationToken.None);
 
         Assert.Equal(0, recorded);
         Assert.Empty(world.Administrations.Saved);
@@ -142,7 +142,7 @@ public class MissedDoseRecorderTests
         var world = new MedicationWorld(At(19, 9, 5));
         world.AddDailyOrder(new DateOnly(2026, 11, 19), At(19, 7, 0), new TimeOnly(8, 0));
 
-        var recorded = await world.Recorder.RecordMissedDosesAsync(At(19, 9, 5), CancellationToken.None);
+        var recorded = await world.Recorder.RecordMissedDosesAsync(CancellationToken.None);
 
         Assert.Equal(1, recorded);
         var missed = Assert.Single(world.Administrations.Saved);

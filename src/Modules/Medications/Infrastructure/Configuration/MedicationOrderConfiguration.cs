@@ -24,6 +24,8 @@ namespace Medications.Infrastructure.Configuration
             builder.HasIndex(x => x.CareHomeId);
             builder.HasMany(x => x.Administrations).WithOne().HasForeignKey(x => x.MedicationOrderId).OnDelete(DeleteBehavior.ClientNoAction);
             builder.HasMany(x => x.Schedule).WithOne().HasForeignKey(x => x.MedicationOrderId).OnDelete(DeleteBehavior.ClientNoAction);
+            builder.HasMany(x => x.StatusHistory).WithOne().HasForeignKey(x => x.MedicationOrderId).OnDelete(DeleteBehavior.ClientNoAction);
+            builder.Property(x => x.AllergyOverrideReason).HasMaxLength(MedicationOrder.AllergyOverrideReasonMaxLength);
 
         }
     }
@@ -43,6 +45,21 @@ namespace Medications.Infrastructure.Configuration
             builder.HasIndex(x => new { x.MedicationOrderId, x.ScheduledFor })
                 .IsUnique()
                 .HasFilter("[ScheduledFor] IS NOT NULL");
+        }
+    }
+
+    internal class OrderStatusChangeConfiguration : IEntityTypeConfiguration<OrderStatusChange>
+    {
+        public void Configure(EntityTypeBuilder<OrderStatusChange> builder)
+        {
+            builder.ToTable("OrderStatusChange", MedicationDbContext.Schema);
+            builder.HasKey(x => x.Id);
+            // The id is set in code when the row is added to its parent; without this EF
+            // takes a set key for an existing row and updates nothing instead of inserting.
+            builder.Property(x => x.Id).ValueGeneratedNever();
+            builder.Property(x => x.From).HasConversion<string>().HasMaxLength(30);
+            builder.Property(x => x.To).HasConversion<string>().HasMaxLength(30);
+            builder.Property(x => x.Reason).HasMaxLength(OrderStatusChange.ReasonMaxLength);
         }
     }
 

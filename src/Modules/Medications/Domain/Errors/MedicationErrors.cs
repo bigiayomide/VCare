@@ -71,6 +71,35 @@ internal static class MedicationErrors
         Error.Conflict("Medications.PrnDailyLimitReached",
             $"The maximum of {limit} doses in 24 hours has been reached.");
 
+    public static readonly Error OrderNotActiveThen =
+        Error.Conflict("Medications.OrderNotActive", "The order was not active when this dose was due.");
+
+    public static readonly Error StatusReasonRequired =
+        Error.Validation("Medications.StatusReasonRequired", "Say why the order is being held, restarted or stopped.");
+
+    public static readonly Error OrderDiscontinued =
+        Error.Conflict("Medications.OrderDiscontinued", "This order has been discontinued. Record a new order instead.");
+
+    public static Error StatusUnchanged(string status) =>
+        Error.Conflict("Medications.StatusUnchanged", $"The order is already {status}.");
+
+    public static Error OutcomeReasonRequired(string outcome) =>
+        Error.Validation("Medications.OutcomeReasonRequired", $"Say why the dose was recorded as {outcome}.");
+
+    public static readonly Error WitnessRequired =
+        Error.Validation("Medications.WitnessRequired", "A controlled drug needs a second member of staff to witness it.");
+
+    public static readonly Error WitnessMustBeSomeoneElse =
+        Error.Validation("Medications.WitnessMustBeSomeoneElse", "The witness must be someone other than the person giving the dose.");
+
+    public static readonly Error WitnessNotFound =
+        Error.Validation("Medications.WitnessNotFound", "The witness is not a member of staff in this care home.");
+
+    public static Error AllergyConflict(string substance) =>
+        Error.Conflict("Medications.AllergyConflict",
+            $"The resident has a recorded allergy to {substance}. Check with the prescriber; if they confirm the order, " +
+            "send it again with allergyOverrideReason saying who confirmed it and why.");
+
     public static readonly Error InvalidMonth =
         Error.Validation("Medications.InvalidMonth", "Year and month must name a real month.");
 }

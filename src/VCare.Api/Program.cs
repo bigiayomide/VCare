@@ -25,9 +25,28 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
 using Amazon;
 using Amazon.S3;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using VCare.Api.Health;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddValidation();
+
+// One JSON object per log line outside Development, so a log store can search by
+// field (care home, status code, elapsed time) instead of by free text.
+if (!builder.Environment.IsDevelopment())
+{
+    builder.Logging.ClearProviders();
+    builder.Logging.AddJsonConsole();
+}
+
+// An unhandled exception becomes a plain problem+json 500. Without this the
+// default response in Production is an empty 500, and in Development a stack trace.
+builder.Services.AddProblemDetails();
+
+// Live: the process is up. Ready: it can reach the database. Both are anonymous
+// so a load balancer or orchestrator can call them.
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
 
 // Built-in OpenAPI document generation (ASP.NET Core 10).
 builder.Services.AddOpenApi();
@@ -69,13 +88,11 @@ builder.Services.AddScoped<DbConnection>(_ =>
 
 builder.Services.AddOptions<StorageEntity>().Bind(builder.Configuration.GetSection("Storage")).ValidateDataAnnotations();
 
-// Outbox owns the queue and the background drain; Notifications owns delivery.
-// Both must be registered for a domain event to end up as an email.
+// Outbox owns the queue table that Staffs' transaction enlists. Nothing enqueues
+// to it any more (emails are sent directly), so its background drain is not run.
+// Notifications owns delivery.
 builder.Services.AddOutboxModule(builder.Configuration);
 builder.Services.AddNotificationModule(builder.Configuration);
-
-// Composes the patient and its care plan from the two modules that own them.
-builder.Services.AddScoped<DashboardService>();
 
 // Creates a care home and its first admin together, across CareHomes and Staffs.
 builder.Services.AddScoped<CareHomeRegistrationService>();
@@ -91,10 +108,25 @@ builder.Services.AddAuthorizationBuilder()
     
 var app = builder.Build();
 
+app.UseExceptionHandler();
 app.UseHttpsRedirection();
+
+// Browsers must take the declared content type at its word, not guess from the
+// bytes: a stored file is never sniffed into something that runs.
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.XContentTypeOptions = "nosniff";
+    await next();
+});
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// The sign-in and email-sending routes carry their own limits (see AuthRateLimits).
+app.UseRateLimiter();
+
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }).AllowAnonymous();
 
 // Each module maps its own endpoint group.
 app.AddPatientEndpoints();
@@ -107,10 +139,12 @@ app.AddCareHomeEndpoint();
 app.AddCarePlanEndpoint();
 app.AddCareHomeRegistrationEndpoint();
 
+// The fallback policy requires a signed-in caller everywhere, which also covered
+// the API description: a developer had to have a token to read how to get one.
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
-    app.MapScalarApiReference();
+    app.MapOpenApi().AllowAnonymous();
+    app.MapScalarApiReference().AllowAnonymous();
 }
 
 app.Run();

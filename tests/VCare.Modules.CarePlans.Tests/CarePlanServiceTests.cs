@@ -55,7 +55,7 @@ public class CarePlanServiceTests
         var service = new CarePlanService(plans, new FakeCurrentUser(), new FakePatients(Resident));
 
         var result = await service.CreateCarePlanAsync(Guid.NewGuid(),
-            new CreateCarePlanRequest(Guid.NewGuid(), "Stay mobile", null), CancellationToken.None);
+            new CreateCarePlanRequest("Stay mobile", null), CancellationToken.None);
 
         Assert.Equal(ErrorKind.NotFound, result.Error.Kind);
         Assert.Empty(plans.Plans);
@@ -68,9 +68,21 @@ public class CarePlanServiceTests
         var service = new CarePlanService(plans, new FakeCurrentUser(), new FakePatients(Resident));
 
         var result = await service.CreateCarePlanAsync(Resident,
-            new CreateCarePlanRequest(Guid.NewGuid(), "Stay mobile", null), CancellationToken.None);
+            new CreateCarePlanRequest("Stay mobile", null), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(Resident, Assert.Single(plans.Plans).PatientId.Value);
+    }
+
+    [Fact]
+    public async Task The_author_of_a_care_plan_is_whoever_is_signed_in()
+    {
+        var plans = new FakePlans();
+        var caller = new FakeCurrentUser();
+        var service = new CarePlanService(plans, caller, new FakePatients(Resident));
+
+        await service.CreateCarePlanAsync(Resident, new CreateCarePlanRequest("Stay mobile", null), CancellationToken.None);
+
+        Assert.Equal(caller.UserId, Assert.Single(plans.Plans).StaffId);
     }
 }

@@ -21,6 +21,9 @@ namespace Staffs.Application.Abstraction
         /// through <see cref="SaveChangesAsync"/> and dispatch nothing.</summary>
         Task<int> CommitandSaveAsync(CancellationToken cancellationToken = default);
 
+        /// <summary>Active admins in the caller's care home: a home must always keep one.</summary>
+        Task<int> CountActiveAdminsAsync(CancellationToken cancellationToken = default);
+
         /// <summary>True when the storage key is one of this staff member's documents
         /// or their profile image: the only objects a download for them may return.</summary>
         Task<bool> OwnsStorageKeyAsync(VCare.SharedKernel.Abstractions.StaffId staffId, string storageKey, CancellationToken cancellationToken = default);

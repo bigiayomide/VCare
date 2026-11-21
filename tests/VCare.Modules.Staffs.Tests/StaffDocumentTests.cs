@@ -27,6 +27,7 @@ public class StaffDocumentTests
         public void Update(Staff s) { }
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
         public Task<int> CommitandSaveAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
+        public Task<int> CountActiveAdminsAsync(CancellationToken cancellationToken = default) => Task.FromResult(1);
         public Task<bool> OwnsStorageKeyAsync(StaffId staffId, string storageKey, CancellationToken cancellationToken = default) =>
             Task.FromResult(staffId == staff.Id
                 && (staff.ProfilePictureUrl == storageKey || staff.GetDocuments().Any(d => d.StorageKeyName == storageKey)));
@@ -44,7 +45,11 @@ public class StaffDocumentTests
         public Task<Result<string>> GenerateEmailVerificationLinkAsync(string email) => throw new NotSupportedException();
         public Task<bool> NeedsEmailVerificationAsync(string email) => throw new NotSupportedException();
         public Task<Result> VerifyEmailAsync(string email, string token) => throw new NotSupportedException();
-        public Task<Result<string>> GetPasswordResetcode(string email) => throw new NotSupportedException();
+        public Task<Result<string?>> GetPasswordResetcode(string email) => throw new NotSupportedException();
+        public Task<Result> ChangeRoleAsync(Guid staffId, string role, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<Result> ChangeEmailAsync(Guid staffId, string email, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<Result> DeactivateAsync(Guid staffId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<Result> ReactivateAsync(Guid staffId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<Result<bool>> ResetPasswordAsync(string password, string email, string token) => throw new NotSupportedException();
     }
 

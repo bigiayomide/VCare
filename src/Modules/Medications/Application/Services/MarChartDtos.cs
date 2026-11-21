@@ -29,7 +29,9 @@ namespace Medications.Application.Services
         string? PrnIndication,
         bool IsControlledDrug,
         OrderStatus Status,
-        IReadOnlyList<MarCellResponse> Cells
+        IReadOnlyList<MarCellResponse> Cells,
+        // Holds, restarts and stops, oldest first: where the chart draws its lines.
+        IReadOnlyList<StatusChangeResponse> StatusChanges
     );
 
     /// <summary>
@@ -53,7 +55,8 @@ namespace Medications.Application.Services
         string? Notes,
         // Signed after the on-time window closed, and why.
         bool IsLate = false,
-        string? Reason = null
+        string? Reason = null,
+        Guid? WitnessedByStaffId = null
     );
 
     /// <summary>
@@ -67,7 +70,9 @@ namespace Medications.Application.Services
         Missed = 1,   // the window closed unsigned, stored or not yet — red gap
         Signed = 2,   // a carer recorded an outcome (Taken, Refused...)
         Due = 3,      // inside the window around DueAt — amber, signable
-        NotRecorded = 4 // its window closed before this order was entered into VCare:
-                        // nothing was expected here, so it is not a missed dose
+        NotRecorded = 4, // its window closed before this order was entered into VCare:
+                         // nothing was expected here, so it is not a missed dose
+        Away = 5         // due while the resident was in hospital or on leave, and not
+                         // yet recorded as such: not a dose the home could have given
     }
 }

@@ -6,9 +6,9 @@
   <Folder Name="/src/Modules/">
     <Project Path="src/Modules/Patients/VCare.Modules.Patients.csproj" />
     <Project Path="src/Modules/CarePlans/VCare.Modules.CarePlans.csproj" />
-    <Project Path="src/Modules/medications/VCare.Modules.Medications.csproj" />
+    <Project Path="src/Modules/Medications/VCare.Modules.Medications.csproj" />
     <Project Path="src/Modules/Staffs/VCare.Modules.Staffs.csproj" />
-    <Project Path="src/Modules/CareHomes/VCare.Modules.CareHome.Csproj" />
+    <Project Path="src/Modules/CareHomes/VCare.Modules.CareHome.csproj" />
     <Project Path="src/Modules/Visitation/VCare.Modules.Visitation.csproj" />
     <Project Path="src/Modules/Outbox/VCare.Modules.Outbox.csproj" />
   </Folder>
@@ -21,5 +21,7 @@
     <Project Path="tests/VCare.Modules.Medications.Tests/VCare.Modules.Medications.Tests.csproj" />
     <Project Path="tests/VCare.Modules.Visitation.Tests/VCare.Modules.Visitation.Tests.csproj" />
     <Project Path="tests/VCare.Modules.Staffs.Tests/VCare.Modules.Staffs.Tests.csproj" />
+    <Project Path="tests/VCare.Modules.CareHomes.Tests/VCare.Modules.CareHomes.Tests.csproj" />
+    <Project Path="tests/VCare.Api.Tests/VCare.Api.Tests.csproj" />
   </Folder>
 </Solution>

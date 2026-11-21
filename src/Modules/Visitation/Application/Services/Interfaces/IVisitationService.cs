@@ -12,7 +12,7 @@ public interface IVisitationService
     Task<Result> AssignStaffAsync(Guid patientId, Guid visitId, AssignStaffRequest request, CancellationToken token);
 
     // The staff member checking in or out is the caller.
-    Task<Result> CheckInAsync(Guid patientId, Guid visitId, CheckInVisitRequest request, CancellationToken token);
+    Task<Result> CheckInAsync(Guid patientId, Guid visitId, CancellationToken token);
     Task<Result> CheckOutAsync(Guid patientId, Guid visitId, CheckOutVisitRequest request, CancellationToken token);
     Task<Result> CancelVisitAsync(Guid patientId, Guid visitId, CancelVisitRequest request, CancellationToken token);
 

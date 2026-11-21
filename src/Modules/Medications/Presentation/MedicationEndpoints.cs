@@ -64,9 +64,10 @@ namespace Medications.Presentation
 
         public static async Task<IResult> UpdateMedicationOrderStatus(
             Guid patientId, Guid orderId, UpdateMedicationOrderStatusRequest request,
-            IMedicationService medicationService, CancellationToken token)
+            IMedicationService medicationService, ICurrentUser currentUser, CancellationToken token)
         {
-            var response = await medicationService.UpdateMedicationOrderStatusAsync(patientId, orderId, request.Status, token);
+            // Who held, restarted or stopped the order is the caller.
+            var response = await medicationService.UpdateMedicationOrderStatusAsync(patientId, orderId, request, currentUser.UserId, token);
             return response.IsFailure ? response.ToProblem() : TypedResults.Ok();
         }
 

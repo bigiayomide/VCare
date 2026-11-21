@@ -116,14 +116,14 @@ internal  class PatientService(
             var patient = await repository.GetByIdAsync(id, cancellationToken);
             return patient is null
                 ? null
-                : new PatientResponse(patient.Id.Value, patient.FullName, patient.DateOfBirth);
+                : new PatientResponse(patient.Id.Value, patient.FullName, patient.DateOfBirth, patient.AllergyStatus);
         }
 
     public async Task<IReadOnlyList<PatientResponse>> ListAsync(CancellationToken cancellationToken = default)
     {
         var patients = await repository.ListAsync(cancellationToken);
         return patients
-            .Select(p => new PatientResponse(p.Id.Value, p.FullName, p.DateOfBirth))
+            .Select(p => new PatientResponse(p.Id.Value, p.FullName, p.DateOfBirth, p.AllergyStatus))
             .ToList();
     }
 
@@ -141,7 +141,7 @@ internal  class PatientService(
         await repository.AddAsync(patient.Value, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return Result.Success(new PatientResponse(patient.Value.Id.Value, patient.Value.FullName, patient.Value.DateOfBirth));
+        return Result.Success(new PatientResponse(patient.Value.Id.Value, patient.Value.FullName, patient.Value.DateOfBirth, patient.Value.AllergyStatus));
     }
 
     public async Task<Result> UpdateAsync(Guid id, UpdatePatientRequest request, CancellationToken cancellationToken = default)

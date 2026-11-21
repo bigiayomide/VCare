@@ -30,6 +30,49 @@ internal sealed class FakePatients(params Guid[] known) : IPatientDirectory
         Task.FromResult(known.Contains(patientId));
 }
 
+internal sealed class FakeStaff(params Guid[] known) : IStaffDirectory
+{
+    public Task<bool> ExistsAsync(Guid staffId, CancellationToken cancellationToken) =>
+        Task.FromResult(known.Contains(staffId));
+}
+
+internal sealed class FakeAllergies : IResidentAllergies
+{
+    private readonly Dictionary<Guid, List<string>> _byResident = [];
+
+    public void Add(Guid patientId, string substance)
+    {
+        if (!_byResident.TryGetValue(patientId, out var list))
+            _byResident[patientId] = list = [];
+        list.Add(substance);
+    }
+
+    public Task<IReadOnlyList<string>> ActiveSubstancesAsync(Guid patientId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<string>>(_byResident.TryGetValue(patientId, out var list) ? list : []);
+}
+
+internal sealed class FakeAbsences : IResidentAbsences
+{
+    private readonly List<ResidentAbsence> _absences = [];
+    public void Add(ResidentAbsence absence) => _absences.Add(absence);
+
+    public Task<IReadOnlyList<ResidentAbsence>> OverlappingAsync(IReadOnlyCollection<Guid> patientIds, DateTime from, DateTime to,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<ResidentAbsence>>(_absences
+            .Where(a => patientIds.Contains(a.PatientId) && a.StartedAt <= to && (a.EndedAt is null || a.EndedAt >= from))
+            .ToList());
+}
+
+/// <summary>The care home's wall clock: the test clock's instant, read in <see cref="Zone"/> (UTC unless a test sets one).</summary>
+internal sealed class FakeCareHomeClock(TimeProvider clock) : ICareHomeClock
+{
+    public TimeZoneInfo Zone { get; set; } = TimeZoneInfo.Utc;
+
+    public Task<DateTime> NowAsync(Guid careHomeId, CancellationToken cancellationToken) =>
+        Task.FromResult(DateTime.SpecifyKind(
+            TimeZoneInfo.ConvertTimeFromUtc(clock.GetUtcNow().UtcDateTime, Zone), DateTimeKind.Unspecified));
+}
+
 internal sealed class FakeOrders : IMedicationOrderRepository
 {
     public List<MedicationOrder> Orders { get; } = [];
@@ -57,7 +100,8 @@ internal sealed class FakeOrders : IMedicationOrderRepository
 
     public Task<List<MedicationOrder>> ActiveScheduledForAllCareHomesAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken) =>
         Task.FromResult(Orders
-            .Where(o => o.Status == OrderStatus.Active && !o.IsPrn && o.StartDate <= to && (o.EndDate == null || o.EndDate >= from))
+            .Where(o => (o.Status == OrderStatus.Active || o.StatusChangedAt >= from.ToDateTime(TimeOnly.MinValue))
+                     && !o.IsPrn && o.StartDate <= to && (o.EndDate == null || o.EndDate >= from))
             .ToList());
 }
 
@@ -91,7 +135,7 @@ internal sealed class FakeAdministrations : IMedicalAdministrationRepository
     public Task<List<DateTime>> PrnGivenTimesAsync(Guid orderId, DateTime from, DateTime to, CancellationToken cancellationToken) =>
         Task.FromResult(Saved
             .Where(a => a.MedicationOrderId.Value == orderId && a.ScheduledFor == null
-                     && a.OutcomeCodeId == OutcomeCode.TakenId
+                     && OutcomeCode.CountsAsGiven(a.OutcomeCodeId)
                      && a.AdministeredAt >= from && a.AdministeredAt <= to)
             .Select(a => a.AdministeredAt!.Value)
             .ToList());
@@ -135,28 +179,40 @@ internal sealed class MedicationWorld
     public static readonly Guid Resident = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000001");
     public static readonly Guid OtherResident = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000002");
     public static readonly Guid Carer = Guid.Parse("cccccccc-0000-0000-0000-000000000001");
+    public static readonly Guid Witness = Guid.Parse("cccccccc-0000-0000-0000-000000000002");
 
     public FixedClock Clock { get; }
     public FakeOrders Orders { get; } = new();
     public FakeAdministrations Administrations { get; } = new();
     public FakeOutcomes Outcomes { get; } = new();
     public ScheduleExpander Expander { get; } = new();
+    public FakeAllergies Allergies { get; } = new();
+    public FakeAbsences Absences { get; } = new();
+    public FakeCareHomeClock HomeClock { get; }
+    private readonly FakeCurrentUser _carer = new(CareHome, Carer);
 
-    public MedicationWorld(DateTime now) => Clock = new FixedClock(now);
+    public MedicationWorld(DateTime now)
+    {
+        Clock = new FixedClock(now);
+        HomeClock = new FakeCareHomeClock(Clock);
+    }
 
     public MedicationService Medications => new(Orders, Administrations, Expander, Outcomes,
-        new FakeCurrentUser(CareHome, Carer), new FakePatients(Resident, OtherResident), Clock);
+        _carer, new FakePatients(Resident, OtherResident), new FakeStaff(Carer, Witness), Allergies, Absences, HomeClock);
 
-    public MarChartService Chart => new(Orders, Administrations, Expander, Outcomes, Clock);
+    public MarChartService Chart => new(Orders, Administrations, Expander, Outcomes, _carer, Absences, HomeClock);
 
-    public MissedDoseRecorder Recorder => new(Orders, Administrations, Expander,
+    public MissedDoseRecorder Recorder => new(Orders, Administrations, Expander, Absences, HomeClock, Clock,
         Microsoft.Extensions.Logging.Abstractions.NullLogger<MissedDoseRecorder>.Instance);
 
     /// <summary>A regular order given every day at the times named, entered at <paramref name="createdAt"/>.</summary>
-    public MedicationOrder AddDailyOrder(DateOnly start, DateTime createdAt, params TimeOnly[] times)
+    public MedicationOrder AddDailyOrder(DateOnly start, DateTime createdAt, params TimeOnly[] times) =>
+        AddDailyOrder(start, createdAt, false, times);
+
+    public MedicationOrder AddDailyOrder(DateOnly start, DateTime createdAt, bool controlledDrug, params TimeOnly[] times)
     {
         var order = MedicationOrder.Record(Resident, CareHome, "Paracetamol 500mg", MedicationRouteEnum.ORAL, null,
-            start, null, "Dr Okafor", false, null, null, null, false, OrderStatus.Active,
+            start, null, "Dr Okafor", false, null, null, null, controlledDrug, OrderStatus.Active,
             [("1 tablet", FrequencyType.DailyAtTimes, times.ToList(), 1, DayOfWeekFlags.None, null, start, null, 1)],
             createdAt).Value;
         Orders.Orders.Add(order);
@@ -164,10 +220,11 @@ internal sealed class MedicationWorld
     }
 
     /// <summary>An as-required order with the given minimum interval and 24-hour dose limit.</summary>
-    public MedicationOrder AddPrnOrder(DateOnly start, DateTime createdAt, int? minIntervalMinutes, int? maxDosesPer24h)
+    public MedicationOrder AddPrnOrder(DateOnly start, DateTime createdAt, int? minIntervalMinutes, int? maxDosesPer24h,
+        bool controlledDrug = false)
     {
         var order = MedicationOrder.Record(Resident, CareHome, "Paracetamol 500mg", MedicationRouteEnum.ORAL, null,
-            start, null, "Dr Okafor", true, "Pain", minIntervalMinutes, "8 tablets in 24 hours", false, OrderStatus.Active,
+            start, null, "Dr Okafor", true, "Pain", minIntervalMinutes, "8 tablets in 24 hours", controlledDrug, OrderStatus.Active,
             [], createdAt, prnMaxDosesPer24h: maxDosesPer24h).Value;
         Orders.Orders.Add(order);
         return order;

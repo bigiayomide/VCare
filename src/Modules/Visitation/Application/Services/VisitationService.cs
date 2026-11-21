@@ -8,7 +8,7 @@ using Visitation.Domain.Entities;
 namespace VCare.Modules.Visitation.Application.Services;
 
 internal sealed class VisitationService(IVisitRepository visitRepository, ICurrentUser currentUser,
-    IPatientDirectory patients, IStaffDirectory staff) : IVisitationService
+    IPatientDirectory patients, IStaffDirectory staff, TimeProvider clock) : IVisitationService
 {
     private static readonly Error VisitNotFound = Error.NotFound("Visits.NotFound", "Visit not found.");
 
@@ -40,8 +40,8 @@ internal sealed class VisitationService(IVisitRepository visitRepository, ICurre
         return await MutateAsync(patientId, visitId, visit => visit.AssignVisit(new StaffId(request.StaffId)), token);
     }
 
-    public Task<Result> CheckInAsync(Guid patientId, Guid visitId, CheckInVisitRequest request, CancellationToken token) =>
-        MutateAsync(patientId, visitId, visit => visit.Checkin(request.CheckedInAt, new StaffId(currentUser.UserId)), token);
+    public Task<Result> CheckInAsync(Guid patientId, Guid visitId, CancellationToken token) =>
+        MutateAsync(patientId, visitId, visit => visit.Checkin(clock.GetUtcNow().UtcDateTime, new StaffId(currentUser.UserId)), token);
 
     public Task<Result> CheckOutAsync(Guid patientId, Guid visitId, CheckOutVisitRequest request, CancellationToken token) =>
         MutateAsync(patientId, visitId, visit => visit.CheckOut(
@@ -49,7 +49,7 @@ internal sealed class VisitationService(IVisitRepository visitRepository, ICurre
             request.IsMedicationCompleted, request.IsPersonalCareCompleted,
             request.IsFeedingTaskCompleted, request.MedicationTaskNote,
             request.PersonalCareTaskNote, request.FeedingTaskNote,
-            request.CheckedOutAt), token);
+            clock.GetUtcNow().UtcDateTime), token);
 
     public Task<Result> CancelVisitAsync(Guid patientId, Guid visitId, CancelVisitRequest request, CancellationToken token) =>
         MutateAsync(patientId, visitId, visit => visit.Cancel(request.Reason), token);

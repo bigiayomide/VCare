@@ -6,11 +6,12 @@ namespace Medications.Application.Services
     internal class ScheduleExpander
     {
         /// <summary>
-        /// The doses an order expects now: none once it is suspended or
-        /// discontinued. What sign-off, the due list and the missed-dose recorder use.
+        /// The doses an order expected: those due while it was active. None while
+        /// it was held or after it stopped, so restarting a held order does not turn
+        /// the held days into misses. What the due list and the missed-dose recorder use.
         /// </summary>
         public IEnumerable<DueSlot> ExpandSchedule(MedicationOrder order, DateOnly from, DateOnly to) =>
-            order.Status == OrderStatus.Active ? ExpandPlanned(order, from, to) : [];
+            ExpandPlanned(order, from, to).Where(slot => order.WasActiveAt(slot.DueAt));
 
         /// <summary>
         /// The doses an order's plan names, whatever its status now. The MAR chart

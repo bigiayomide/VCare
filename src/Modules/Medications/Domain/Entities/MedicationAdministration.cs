@@ -29,6 +29,10 @@ namespace Medications.Domain.Entities
         // ("1-2 tablets") and the amount given decides what is still allowed today.
         public string? DoseGiven { get; private set; }
 
+        // The second member of staff who saw a controlled drug prepared and given
+        // (or refused and destroyed). Required on a controlled-drug order.
+        public Guid? WitnessedByStaffId { get; private set; }
+
         public DateTime CreatedAt { get; private set; }
         public DateTime? ModifiedAt { get; private set; }
 
@@ -42,7 +46,8 @@ namespace Medications.Domain.Entities
 
         public static Result<MedicationAdministration> Create(Guid medicationOrderId, Guid patientId, Guid careHomeId, DateTime? scheduledFor,
         DateTime administeredAt, Guid outcomeId, Guid administeredByStaffId,
-         string? notes, DateTime recordedAt, bool isLate = false, string? reason = null, string? doseGiven = null)
+         string? notes, DateTime recordedAt, bool isLate = false, string? reason = null, string? doseGiven = null,
+         Guid? witnessedByStaffId = null)
         {
             if (medicationOrderId == Guid.Empty)
             {
@@ -87,6 +92,7 @@ namespace Medications.Domain.Entities
                 IsLate = isLate,
                 Reason = reason,
                 DoseGiven = doseGiven,
+                WitnessedByStaffId = witnessedByStaffId,
                 CreatedAt = recordedAt
             };
             return Result.Success(administration);
@@ -118,6 +124,26 @@ namespace Medications.Domain.Entities
                 CreatedAt = recordedAt
             };
 
+        /// <summary>
+        /// A scheduled dose due while the resident was away (in hospital, on leave):
+        /// the home could not give it, so it is recorded with that outcome, not as missed.
+        /// </summary>
+        public static MedicationAdministration RecordAway(MedicationOrder order, DateTime scheduledFor,
+            Guid outcomeId, string notes, DateTime recordedAt) =>
+            new()
+            {
+                Id = MedicationAdministrationId.New(),
+                MedicationOrderId = order.Id,
+                PatientId = order.PatientId,
+                CareHomeId = order.CareHomeId,
+                ScheduledFor = scheduledFor,
+                AdministeredAt = null,
+                OutcomeCodeId = outcomeId,
+                AdministeredByStaffId = SystemStaffId,
+                Notes = notes,
+                CreatedAt = recordedAt
+            };
+
         public bool IsMissed => OutcomeCodeId == OutcomeCode.MissedId;
 
         /// <summary>
@@ -128,7 +154,7 @@ namespace Medications.Domain.Entities
         /// account came afterwards.
         /// </summary>
         public Result ResolveMissed(Guid outcomeId, Guid staffId, DateTime administeredAt, string reason,
-            string? notes, DateTime recordedAt)
+            string? notes, DateTime recordedAt, Guid? witnessedByStaffId = null)
         {
             if (!IsMissed)
                 return Result.Failure(Error.Conflict("Medications.DoseAlreadyRecorded", "This dose is already recorded."));
@@ -146,6 +172,7 @@ namespace Medications.Domain.Entities
             AdministeredAt = administeredAt;
             Reason = reason.Trim();
             Notes = notes;
+            WitnessedByStaffId = witnessedByStaffId;
             IsLate = true;
             ModifiedAt = recordedAt;
             return Result.Success();

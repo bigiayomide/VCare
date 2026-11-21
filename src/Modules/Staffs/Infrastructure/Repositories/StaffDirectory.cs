@@ -11,7 +11,8 @@ namespace Staffs.Infrastructure.Repositories
         public Task<bool> ExistsAsync(Guid staffId, CancellationToken cancellationToken)
         {
             var id = new StaffId(staffId);
-            return dbContext.Staffs.AnyAsync(s => s.Id == id, cancellationToken);
+            // Deactivated staff cannot be assigned a visit or witness a dose.
+            return dbContext.Staffs.AnyAsync(s => s.Id == id && s.DeactivatedAt == null, cancellationToken);
         }
     }
 }

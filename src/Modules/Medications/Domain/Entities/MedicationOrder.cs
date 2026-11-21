@@ -1,4 +1,5 @@
 using Medications.Domain.Enum;
+using Medications.Domain.Errors;
 using VCare.SharedKernel.Abstractions;
 using VCare.SharedKernel.Domain;
 using VCare.SharedKernel.Results;
@@ -30,9 +31,21 @@ namespace Medications.Domain.Entities
         public DateTime CreatedAt { get; private set; } = DateTime.Now;
         public DateTime? ModifiedAt { get; private set; } = null;
 
-        // When the order last left Active. The MAR chart keeps showing the doses
-        // that were due before this, so stopping an order never erases its history.
+        // When the status last changed. Kept alongside StatusHistory because orders
+        // stopped before the history existed have only this to go on.
         public DateTime? StatusChangedAt { get; private set; }
+
+        // Every hold, restart and stop, oldest first. Decides which planned doses
+        // were expected (WasActiveAt), so a restart never turns the held days into misses.
+        public ICollection<OrderStatusChange> StatusHistory { get; private set; } = [];
+
+        // Who entered the order into VCare. Null on orders entered before this was kept.
+        public Guid? CreatedByStaffId { get; private set; }
+
+        // Set only when the medicine matched one of the resident's recorded allergies
+        // and the person entering it confirmed with the prescriber that it should stand.
+        public string? AllergyOverrideReason { get; private set; }
+        public const int AllergyOverrideReasonMaxLength = 500;
 
 
         private MedicationOrder(){}
@@ -46,7 +59,7 @@ namespace Medications.Domain.Entities
             IEnumerable<(string Dose, FrequencyType FType, List<TimeOnly> Times, int IntervalDays, 
             DayOfWeekFlags DaysOfWeek, DateOnly? AnchorDate, DateOnly EffectiveFrom, 
             DateOnly? EffectiveTo, int Sequence)> doseSchedule, DateTime createdAt, DateTime? modifiedAt = null,
-            int? prnMaxDosesPer24h = null)
+            int? prnMaxDosesPer24h = null, Guid? createdByStaffId = null, string? allergyOverrideReason = null)
 
         {
              if (patientId == Guid.Empty)
@@ -72,6 +85,8 @@ namespace Medications.Domain.Entities
                 return Result.Failure<MedicationOrder>("The minimum interval between PRN doses must be at least one minute.");
             if (prnMaxDosesPer24h is < 1)
                 return Result.Failure<MedicationOrder>("The maximum number of PRN doses in 24 hours must be at least one.");
+            if (allergyOverrideReason?.Trim().Length > AllergyOverrideReasonMaxLength)
+                return Result.Failure<MedicationOrder>($"The allergy override reason can be at most {AllergyOverrideReasonMaxLength} characters.");
 
             var order = new MedicationOrder
             {
@@ -91,7 +106,9 @@ namespace Medications.Domain.Entities
                 PrnMaxDosesPer24h = prnMaxDosesPer24h,
                 IsControlledDrug = isControlledDrug,
                 Status = orderStatus,
-                CreatedAt = createdAt
+                CreatedAt = createdAt,
+                CreatedByStaffId = createdByStaffId,
+                AllergyOverrideReason = string.IsNullOrWhiteSpace(allergyOverrideReason) ? null : allergyOverrideReason.Trim()
             };
             if (modifiedAt.HasValue)
             {
@@ -117,24 +134,51 @@ namespace Medications.Domain.Entities
             
         }
 
-        public Result UpdateStatus(string status, DateTime changedAt)
+        /// <summary>
+        /// Holds, restarts or stops the order. A suspended order can be restarted;
+        /// a discontinued one is finished, and a new prescription is a new order.
+        /// </summary>
+        public Result ChangeStatus(OrderStatus to, Guid staffId, string? reason, DateTime changedAt)
         {
-            if( status == nameof(OrderStatus.Suspended) )
+            if (Status == OrderStatus.Discontinued)
+                return Result.Failure(MedicationErrors.OrderDiscontinued);
+            if (Status == to)
+                return Result.Failure(MedicationErrors.StatusUnchanged(to.ToString()));
+            if (string.IsNullOrWhiteSpace(reason))
+                return Result.Failure(MedicationErrors.StatusReasonRequired);
+            if (reason.Trim().Length > OrderStatusChange.ReasonMaxLength)
+                return Result.Failure($"The reason can be at most {OrderStatusChange.ReasonMaxLength} characters.");
+            if (staffId == Guid.Empty)
+                return Result.Failure("StaffId id required");
+            // Two changes at the same minute would make "which came first" ambiguous
+            // for every dose between them.
+            if (StatusHistory.Any(c => c.ChangedAt >= changedAt))
+                return Result.Failure(Error.Conflict("Medications.StatusChangedConcurrently",
+                    "The order's status was changed at the same time or later. Refresh and check."));
+
+            StatusHistory.Add(OrderStatusChange.Create(Id, Status, to, changedAt, staffId, reason.Trim()));
+            Status = to;
+            StatusChangedAt = changedAt;
+            ModifiedAt = changedAt;
+            return Result.Success();
+        }
+
+        /// <summary>
+        /// Whether a dose due at <paramref name="at"/> was expected: the order was
+        /// active then. Doses due while it was held or after it stopped were not.
+        /// </summary>
+        public bool WasActiveAt(DateTime at)
+        {
+            if (StatusHistory.Count == 0)
             {
-                Status = OrderStatus.Suspended;
-                StatusChangedAt = changedAt;
-                ModifiedAt = changedAt;
-                return Result.Success();
+                // No recorded changes: either never changed, or stopped before the
+                // history was kept, when only the time of the last change was stored.
+                return Status == OrderStatus.Active || (StatusChangedAt is { } stoppedAt && at < stoppedAt);
             }
-            if ( status == nameof(OrderStatus.Discontinued))
-            {
-                Status = OrderStatus.Discontinued;
-                StatusChangedAt = changedAt;
-                ModifiedAt = changedAt;
-                return Result.Success();
-            }
-            return Result.Failure("Invalid OrderStatus");
-           
+            var changes = StatusHistory.OrderBy(c => c.ChangedAt).ToList();
+            var last = changes.LastOrDefault(c => c.ChangedAt <= at);
+            var statusThen = last?.To ?? changes[0].From;
+            return statusThen == OrderStatus.Active;
         }
 
         private Result ReplaceDetails( IEnumerable<(string Dose, FrequencyType FType, List<TimeOnly> Times, int IntervalDays,

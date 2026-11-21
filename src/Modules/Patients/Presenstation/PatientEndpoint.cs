@@ -28,6 +28,9 @@ namespace Patients.Presenstation
             patient.MapPost("/{patientId:Guid}/profile-image",UploadProfileImageForPatient).RequireAuthorization("Admin_Role");
             patient.MapGet("/{patientId:Guid}/document",GetPatientDocument).RequireAuthorization("Admin_Or_Carer");
 
+            // Allergies and absences, which Medications acts on.
+            app.AddResidentRecordEndpoints();
+
         }
 
         public async static Task<IResult>UploadPatientDocument(Guid patientId, IFormFile formFile, string fileName, IPatientService patientService, CancellationToken cancellationToken)
@@ -44,7 +47,9 @@ namespace Patients.Presenstation
         public async static Task<IResult>GetPatientDocument(Guid patientId, string key, IPatientService patientService, CancellationToken cancellationToken)
         {
             var result = await patientService.GetPatientDocumentsAsync(new PatientId(patientId), key, cancellationToken);
-            return result.IsFailure ? result.ToProblem() : TypedResults.File(result.Value.Content, result.Value.ContentType);
+            return result.IsFailure ? result.ToProblem() : TypedResults.File(result.Value.Content, result.Value.ContentType,
+                // A download, never shown inline, under the name it was uploaded with.
+                fileDownloadName: VCare.SharedKernel.Domain.StorageKeys.DownloadName(key));
         }
 
 

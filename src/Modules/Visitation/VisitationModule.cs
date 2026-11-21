@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,6 +25,8 @@ public static class VisitationModule
         // PatientsModule, so registering it here would win for every consumer.
         services.AddScoped<IVisitRepository, VisitRepository>();
         services.AddScoped<IVisitationService, VisitationService>();
+        // Check-in and check-out are timed here, not by the client.
+        services.TryAddSingleton(TimeProvider.System);
 
         return services;
     }
