@@ -1,6 +1,6 @@
 $kind: http-example
 request:
-  url: "{{baseUrl}}/api/auth/confirm-email?email=string&token=string"
+  url: "{{baseUrl}}/api/auth/verify-email?email=string&token=string"
   method: GET
   queryParams:
     email: string

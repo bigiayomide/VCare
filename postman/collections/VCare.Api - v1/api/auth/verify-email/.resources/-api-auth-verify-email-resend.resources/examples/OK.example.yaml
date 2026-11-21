@@ -1,6 +1,6 @@
 $kind: http-example
 request:
-  url: "{{baseUrl}}/api/auth/confirm-email"
+  url: "{{baseUrl}}/api/auth/verify-email/resend"
   method: POST
   headers:
     Content-Type: application/json
@@ -11,8 +11,8 @@ request:
         "email": "string"
       }
 response:
-  statusCode: 200
-  statusText: OK
+  statusCode: 202
+  statusText: Accepted
   body:
     type: text
     content: ""

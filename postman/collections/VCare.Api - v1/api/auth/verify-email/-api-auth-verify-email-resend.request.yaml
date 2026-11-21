@@ -1,6 +1,6 @@
 $kind: http-request
-name: /api/auth/confirm-email
-url: "{{baseUrl}}/api/auth/confirm-email"
+name: /api/auth/verify-email/resend
+url: "{{baseUrl}}/api/auth/verify-email/resend"
 method: POST
 headers:
   Content-Type: application/json
@@ -11,5 +11,5 @@ body:
       "email": "string"
     }
 settings: {}
-examples: ./.resources/-api-auth-confirm-email.resources/examples
+examples: ./.resources/-api-auth-verify-email-resend.resources/examples
 order: 1000
