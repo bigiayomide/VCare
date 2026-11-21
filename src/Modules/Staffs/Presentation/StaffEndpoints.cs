@@ -22,8 +22,9 @@ namespace Staffs.Presentation
             staff.MapPost("/",CreateStaff).RequireAuthorization("Admin_Role");
             staff.MapGet("/{staffId:Guid}",GetStaff).RequireAuthorization("Admin_Or_Carer");
             staff.MapPut("/{staffId:Guid}",UpdateStaff).RequireAuthorization("Admin_Role");
-            staff.MapPost("/{staffId:Guid}/document",UploadStaffDocument).RequireAuthorization("Admin_Role");
-            staff.MapPost("/{staffId:Guid}/profile-image",UploadProfileImageForStaff).RequireAuthorization("Admin_Role");
+            // Bearer-token callers only, so no antiforgery token (see PatientEndpoint).
+            staff.MapPost("/{staffId:Guid}/document",UploadStaffDocument).RequireAuthorization("Admin_Role").DisableAntiforgery();
+            staff.MapPost("/{staffId:Guid}/profile-image",UploadProfileImageForStaff).RequireAuthorization("Admin_Role").DisableAntiforgery();
             staff.MapGet("/{staffId:Guid}/document",GetStaffDocument).RequireAuthorization("Admin_Role");
             // For someone who leaves or is suspended. Their records keep their name.
             staff.MapPost("/{staffId:Guid}/deactivate",DeactivateStaff).RequireAuthorization("Admin_Role");
