@@ -14,13 +14,18 @@ A care home signs up and gets an admin account. From there it can:
 
 - **Manage residents (patients):** profiles, photos and documents such as consent forms or hospital
   letters. Allergies are recorded with the reaction and severity, and "no known allergies" is a
-  recorded answer, not the default. Time in hospital or on leave is recorded too.
+  recorded answer, not the default. Time in hospital or on leave is recorded too, as are the NHS
+  number (checked against its check digit), GP, room, admission date, a history of weights, and
+  anyone holding a lasting power of attorney (kept apart from next of kin). Discharging a resident,
+  or recording their death, ends their residency: no dose is expected or can be recorded after it.
 - **Manage staff:** carers and admins, each with their own login, profile and documents. New staff
   confirm their email before they can sign in. A role change takes effect at once, and a staff
   member who leaves is deactivated: they can't sign in and every session they had ends. Their name
   stays on everything they recorded.
 - **Keep a care plan for each resident:** their diagnoses, and for each one the goal and the
-  intervention the staff should carry out.
+  intervention the staff should carry out. Every edit is a numbered version and the earlier ones
+  are kept. An edit made to a version someone else has since replaced is refused, instead of
+  silently overwriting their change.
 - **Run medication rounds:** record each prescription with its dose and schedule (times of day, days
   of the week, every N days, a single one-off dose, or as needed). VCare works out which doses are
   due today and which are still outstanding. Staff sign each dose off as taken or refused, from an
@@ -43,6 +48,10 @@ A care home signs up and gets an admin account. From there it can:
 
 Every care home only ever sees its own data. The care home and the staff member making a change
 come from their login, never from the request, so one home cannot read or write another's records.
+The database enforces it too, with row-level security.
+
+Every change to a resident's record, and every time someone opens it, goes in an audit trail: who,
+when, and for a change, each value before and after.
 
 ## Status
 
@@ -68,6 +77,7 @@ tables or types. The host is a thin composition root that wires the modules toge
 | Medications | Medication orders, dose schedules, administrations, outcome codes, the MAR chart |
 | Visitation | Scheduled visits, staff assignment, check-in and check-out records |
 | Notifications | Sending email over SMTP |
+| Audit | The audit trail: owns its table, records views, serves a resident's history |
 
 Documents and profile images are stored in Amazon S3.
 
@@ -82,6 +92,7 @@ VCare/
 │   ├── VCare.Api/                  # host / composition root, auth, care home registration
 │   ├── VCare.SharedKernel/         # Entity, AggregateRoot, Result, Error, typed ids
 │   └── Modules/
+│       ├── Audit/
 │       ├── CareHomes/
 │       ├── CarePlans/
 │       ├── Medications/
@@ -89,7 +100,8 @@ VCare/
 │       ├── Patients/
 │       ├── Staffs/
 │       └── Visitation/
-├── tests/                          # one test project per module, plus VCare.Api.Tests
+├── tests/                          # one test project per module, VCare.Api.Tests, and
+│                                   # VCare.IntegrationTests (SQL Server in Docker)
 ├── scripts/migrations.sh           # runs a dotnet-ef command for every module
 ├── Dockerfile                      # Linux image of the API
 ├── .github/workflows/ci.yml        # build, test, migration check, image build
@@ -114,6 +126,19 @@ Modules/<Module>/
 - Each context sets its own default schema, so each module's tables live under their own schema.
 - Each context has its own migrations history table (`<schema>.__EFMigrationsHistory`), so modules
   migrate independently and never collide.
+- Every context adds two interceptors (`UseVCareInterceptors`):
+  - **Audit:** each change to an entity marked `IAudited` is written to `audit.AuditEntries` in the
+    same save, so the change and its audit row commit together. Auditing is opt-in, so tables
+    holding password or token hashes are never copied into the trail.
+  - **Care home:** each connection tells SQL Server whose data it may touch
+    (`sp_set_session_context`). A security policy on every table with a care home column then hides
+    other homes' rows and refuses writes into them. A signed-in caller gets their own home. Anything
+    with no signed-in caller (sign-in, registration, password reset, background jobs, migrations)
+    gets every home, as those flows already work across homes. `AspNetUsers` is left out, because
+    sign-in and Identity's duplicate checks must see every account.
+
+**Running SQL by hand:** a connection that hasn't said whose data it may touch sees nothing in the
+protected tables. For maintenance, start with `EXEC sp_set_session_context N'AllCareHomes', 1;`.
 
 ## Running it
 
@@ -121,6 +146,7 @@ Modules/<Module>/
 
 - .NET 10 SDK
 - SQL Server (LocalDB, a container, or a full instance)
+- Docker, for the integration tests (they start their own SQL Server)
 - An SMTP server for email. [MailHog](https://github.com/mailhog/MailHog) works for local
   development.
 - AWS credentials and an S3 bucket, for documents and profile images
@@ -139,7 +165,9 @@ keys:
 | `Smtp:Host`, `Smtp:Port`, `Smtp:User`, `Smtp:Password`, `Smtp:FromAddress`, `Smtp:FromName`, `Smtp:UseSsl` | Outgoing email |
 | `Storage:BaseUrl`, `Storage:BucketName` | S3 storage for documents and images |
 | `Jwt:MaxSessionHours` (optional, default 12) | The longest a sign-in lasts, however often it is refreshed |
-| `BackgroundJobs:Enabled` (optional, default true) | Runs the missed-dose job. With several instances of the API, leave it on for one |
+| `BackgroundJobs:Enabled` (optional, default true) | Runs the missed-dose job's timer. With several instances, each pass takes a database lock, so only one instance does it; set this to false for an instance that should never run jobs |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` (optional) | Sends traces over OTLP to this collector. Without it, nothing leaves the process |
+| `OTEL_SERVICE_NAME` (optional, default `vcare-api`) | The service name traces carry |
 
 Each care home has a time zone (an IANA name such as `Europe/London`), given when it registers
 and changed with `PUT /api/carehome/me`. Dose windows, missed doses and absences all use it. The
@@ -166,6 +194,22 @@ docker run -p 8080:8080 -e ConnectionStrings__Default="..." -e Jwt__Key="..." ..
 The container serves plain HTTP on port 8080; put TLS in front of it. Settings come from
 environment variables (`Section__Key`). Behind a proxy or load balancer, configure forwarded
 headers, so the sign-in rate limits see each client's address rather than the proxy's.
+
+### Tests
+
+```bash
+dotnet test
+```
+
+`tests/VCare.IntegrationTests` starts SQL Server 2022 in Docker (Testcontainers), migrates every
+module through the app, and tests what an in-memory database can't: row-level security, the job
+lock, the audit trail, and tracing of SQL.
+
+### Tracing
+
+Every request, outgoing HTTP call (S3) and SQL command gets a span, and so does each pass of the
+missed-dose job, with how many doses it recorded. Health checks aren't traced. Set
+`OTEL_EXPORTER_OTLP_ENDPOINT` to send them to a collector.
 
 ### Health checks
 
@@ -217,9 +261,11 @@ token stops working as soon as its holder is deactivated, changes role or resets
 | Care home | `PUT /api/carehome/me` |
 | Staff | `/api/staff`, plus `/{staffId}/document`, `/{staffId}/profile-image`, `/{staffId}/deactivate` and `/{staffId}/reactivate` |
 | Patients | `/api/patient`, plus `/{patientId}/document` and `/{patientId}/profile-image` |
+| Resident record | `/api/patient/{patientId}/care-details` (NHS number, GP, room, admission date), `/weights`, `/attorneys`, `/attorneys/{attorneyId}/remove`, `/discharge`, `/death`, `/readmit` |
+| Audit trail | `GET /api/patient/{patientId}/audit` (admins), newest first; `?before=` and `?take=` to page |
 | Allergies | `/api/patient/{patientId}/allergies`, `/allergies/none`, `/allergies/{allergyId}/remove` |
 | Absences | `/api/patient/{patientId}/absences` (start), `/absences/end` |
-| Care plans | `/api/patient/{patientId}/careplan` |
+| Care plans | `/api/patient/{patientId}/careplan`, `/careplan/versions`, `/careplan/versions/{number}`. An update sends the `version` it was made to |
 | Medications | `/api/patient/{patientId}/medication`: orders, `/{orderId}/status`, `/due`, `/outstanding`, `/{orderId}/administrations/{scheduleId}`, `/{orderId}/prn-administrations` |
 | MAR chart | `/api/patient/{patientId}/Marchart` |
 | Visits | `/api/patient/{patientId}/visit`: schedule, `/{visitId}/assign`, `/check-in`, `/check-out`, `/cancel` |
