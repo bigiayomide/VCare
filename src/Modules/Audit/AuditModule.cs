@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using VCare.SharedKernel.Auditing;
+using VCare.SharedKernel.Persistence;
 
 namespace VCare.Modules.Audit;
 
@@ -14,12 +15,14 @@ public static class AuditModule
 {
     public static IServiceCollection AddAuditModule(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddDbContext<AuditDbContext>(options =>
+        // The interceptors every module's DbContext adds: auditing, and the care home
+        // each connection is limited to (row-level security).
+        services.AddVCarePersistence();
+        services.AddDbContext<AuditDbContext>((sp, options) =>
             options.UseSqlServer(configuration.GetConnectionString("Default"),
-                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", AuditEntry.Schema)));
-        services.TryAddSingleton(TimeProvider.System);
-        // Every module's DbContext adds this, so each change is audited in its own save.
-        services.AddScoped<AuditSaveChangesInterceptor>();
+                    sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", AuditEntry.Schema))
+                // Not the audit interceptor: nothing here is IAudited.
+                .AddInterceptors(sp.GetRequiredService<CareHomeSessionContext>()));
         services.AddScoped<AuditTrail>();
         return services;
     }

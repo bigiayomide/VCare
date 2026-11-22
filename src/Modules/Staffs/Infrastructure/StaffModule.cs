@@ -1,4 +1,4 @@
-using VCare.SharedKernel.Auditing;
+using VCare.SharedKernel.Persistence;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -56,7 +56,7 @@ namespace Staffs.Infrastructure
         {
             services.AddDbContext<Staffs.Infrastructure.Persistence.StaffDbContext>((sp, options) =>
                 options.UseSqlServer(configuration.GetConnectionString("Default"), sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", StaffDbContext.schemaName))
-                    .AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>()));
+                    .UseVCareInterceptors(sp));
 
             services.AddScoped<Staffs.Application.Abstraction.IStaffRepository, Staffs.Infrastructure.Repositories.StaffRepository>();
             services.AddScoped<Staffs.Application.Services.Interface.IStaffService, Staffs.Application.Services.StaffService>();

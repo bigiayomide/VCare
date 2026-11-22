@@ -1,4 +1,4 @@
-using VCare.SharedKernel.Auditing;
+using VCare.SharedKernel.Persistence;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System;
 using System.Collections.Generic;
@@ -22,7 +22,7 @@ namespace src.Modules.CareHomes.Infrastructure.Configuration
         {
             services.AddDbContext<CareHomeDbContext>((sp, options) =>
                 options.UseSqlServer(configuration.GetConnectionString("Default"), sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", CareHomeDbContext.SchemaName))
-                    .AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>()));
+                    .UseVCareInterceptors(sp));
 
             services.AddScoped<ICareHomeRepository, CareHomeRepository>();
             services.AddScoped<ICareHomeService, CareHomeService>();

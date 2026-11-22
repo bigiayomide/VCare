@@ -1,4 +1,4 @@
-using VCare.SharedKernel.Auditing;
+using VCare.SharedKernel.Persistence;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -21,7 +21,7 @@ public static class VisitationModule
             options.UseSqlServer(
                 configuration.GetConnectionString("Default"),
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", VisitationDbContext.Schema))
-                .AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>()));
+                .UseVCareInterceptors(sp));
 
         // The repository owns the save. IUnitOfWork is registered unkeyed by
         // PatientsModule, so registering it here would win for every consumer.
