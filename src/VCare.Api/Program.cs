@@ -24,6 +24,8 @@ using Amazon;
 using Amazon.S3;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using VCare.Api.Health;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddValidation();
@@ -39,6 +41,25 @@ if (!builder.Environment.IsDevelopment())
 // An unhandled exception becomes a plain problem+json 500. Without this the
 // default response in Production is an empty 500, and in Development a stack trace.
 builder.Services.AddProblemDetails();
+
+// Traces: a span for each request, each outgoing HTTP call (S3) and each SQL
+// command, plus VCare's own (VCare.*, such as the missed-dose job), so one slow or
+// failing request can be followed end to end. Spans leave the process only when
+// OTEL_EXPORTER_OTLP_ENDPOINT is set; OTEL_SERVICE_NAME names the service.
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService(builder.Configuration["OTEL_SERVICE_NAME"] ?? "vcare-api"))
+    .WithTracing(tracing =>
+    {
+        tracing.AddSource("VCare.*")
+            // A load balancer calls the health checks every few seconds.
+            .AddAspNetCoreInstrumentation(o => o.Filter = context => !context.Request.Path.StartsWithSegments("/health"))
+            .AddHttpClientInstrumentation()
+            .AddSqlClientInstrumentation();
+        if (!string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))
+        {
+            tracing.AddOtlpExporter();
+        }
+    });
 
 // Live: the process is up. Ready: it can reach the database. Both are anonymous
 // so a load balancer or orchestrator can call them.

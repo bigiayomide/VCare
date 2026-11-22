@@ -67,3 +67,51 @@ public class MissedDoseJobTests
         }
     }
 }
+
+// A pass shows up in traces with what it did, so a quiet night on the MAR can
+// be told apart from a job that never ran.
+public class MissedDoseJobTracingTests
+{
+    private const string TestSourceName = "VCare.Tests.MissedDoseJobTracing";
+    private static readonly System.Diagnostics.ActivitySource TestSource = new(TestSourceName);
+
+    [Fact]
+    public async Task A_pass_is_traced_with_the_doses_it_recorded()
+    {
+        var stopped = new List<System.Diagnostics.Activity>();
+        using var listener = new System.Diagnostics.ActivityListener
+        {
+            ShouldListenTo = source => source.Name is MissedDoseJob.TraceSourceName or TestSourceName,
+            Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _) =>
+                System.Diagnostics.ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = activity => { lock (stopped) { stopped.Add(activity); } },
+        };
+        System.Diagnostics.ActivitySource.AddActivityListener(listener);
+        var world = new MedicationWorld(new DateTime(2026, 11, 19, 9, 5, 0));
+        world.AddDailyOrder(new DateOnly(2026, 11, 19), new DateTime(2026, 11, 19, 7, 0, 0), new TimeOnly(8, 0));
+
+        // Other tests run jobs in parallel; only this test's trace counts.
+        using var test = TestSource.StartActivity("test")!;
+        await new MissedDoseJob(new AlwaysFree(), world.Recorder, NullLogger<MissedDoseJob>.Instance)
+            .RunOnceAsync(CancellationToken.None);
+
+        System.Diagnostics.Activity pass;
+        lock (stopped)
+        {
+            pass = Assert.Single(stopped, a => a.TraceId == test.TraceId && a.Source.Name == MissedDoseJob.TraceSourceName);
+        }
+        Assert.Equal("Record missed doses", pass.DisplayName);
+        Assert.Equal(1, pass.GetTagItem("vcare.missed_doses.recorded"));
+    }
+
+    private sealed class AlwaysFree : IJobLock
+    {
+        public Task<IAsyncDisposable?> TryAcquireAsync(string name, CancellationToken cancellationToken) =>
+            Task.FromResult<IAsyncDisposable?>(new Nothing());
+
+        private sealed class Nothing : IAsyncDisposable
+        {
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
+    }
+}
