@@ -31,10 +31,23 @@ internal sealed class ResidentAbsences(PatientsDbContext context) : IResidentAbs
         if (patientIds.Count == 0)
             return [];
         var ids = patientIds.Select(id => new PatientId(id)).ToList();
-        return await context.Set<Domain.Entities.PatientAbsence>()
+        var away = await context.Set<Domain.Entities.PatientAbsence>()
             .AsNoTracking()
             .Where(a => ids.Contains(a.PatientId) && a.StartedAt <= to && (a.EndedAt == null || a.EndedAt >= from))
             .Select(a => new ResidentAbsence(a.PatientId.Value, a.Kind, a.StartedAt, a.EndedAt))
             .ToListAsync(cancellationToken);
+
+        // A resident who was discharged or died is away from then on, for good.
+        // IgnoreQueryFilters for the same reason as above: no caller, no care home.
+        var left = await context.Patients
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(p => ids.Contains(p.Id) && p.LeftAt != null && p.LeftAt <= to)
+            .Select(p => new { p.Id, p.Residency, LeftAt = p.LeftAt!.Value })
+            .ToListAsync(cancellationToken);
+        away.AddRange(left.Select(p => new ResidentAbsence(p.Id.Value,
+            p.Residency == Domain.Entities.ResidencyStatus.Deceased ? AbsenceKind.Deceased : AbsenceKind.Discharged,
+            p.LeftAt, null)));
+        return away;
     }
 }

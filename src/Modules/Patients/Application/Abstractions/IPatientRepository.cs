@@ -15,4 +15,7 @@ internal interface IPatientRepository
     /// <summary>True when the storage key is one of this patient's documents or
     /// their profile image: the only objects a download for them may return.</summary>
     Task<bool> OwnsStorageKeyAsync(Guid patientId, string storageKey, CancellationToken cancellationToken = default);
+
+    /// <summary>True when another resident of the caller's care home has this NHS number.</summary>
+    Task<bool> NhsNumberInUseAsync(string nhsNumber, Guid exceptPatientId, CancellationToken cancellationToken = default);
 }

@@ -58,6 +58,9 @@ namespace VCare.Modules.Patients.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<DateOnly?>("AdmittedOn")
+                        .HasColumnType("date");
+
                     b.Property<string>("AllergyStatus")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -71,6 +74,10 @@ namespace VCare.Modules.Patients.Migrations
 
                     b.Property<DateOnly>("DateOfBirth")
                         .HasColumnType("date");
+
+                    b.Property<string>("DischargeDestination")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("Email")
                         .HasColumnType("nvarchar(max)");
@@ -97,13 +104,33 @@ namespace VCare.Modules.Patients.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<string>("GpName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("GpPhone")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("GpPractice")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<string>("Lastname")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<DateTime?>("LeftAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("ModifiedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("NhsNumber")
+                        .HasMaxLength(10)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(10)");
 
                     b.Property<string>("PhoneNumber")
                         .HasColumnType("nvarchar(max)");
@@ -111,9 +138,22 @@ namespace VCare.Modules.Patients.Migrations
                     b.Property<string>("ProfilePictureUrl")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("Residency")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Room")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CareHomeId");
+
+                    b.HasIndex("CareHomeId", "NhsNumber")
+                        .IsUnique()
+                        .HasFilter("[NhsNumber] IS NOT NULL");
 
                     b.ToTable("Patients", "patients");
                 });
@@ -199,6 +239,86 @@ namespace VCare.Modules.Patients.Migrations
                     b.ToTable("PatientAllergies", "patients");
                 });
 
+            modelBuilder.Entity("VCare.Modules.Patients.Domain.Entities.PatientAttorney", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime>("RecordedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("RecordedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly?>("RegisteredOn")
+                        .HasColumnType("date");
+
+                    b.Property<string>("RemovalReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("RemovedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("RemovedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PatientId");
+
+                    b.ToTable("PatientAttorneys", "patients");
+                });
+
+            modelBuilder.Entity("VCare.Modules.Patients.Domain.Entities.PatientWeight", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Kilograms")
+                        .HasPrecision(4, 1)
+                        .HasColumnType("decimal(4,1)");
+
+                    b.Property<DateTime>("MeasuredAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("RecordedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("RecordedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PatientId", "MeasuredAt");
+
+                    b.ToTable("PatientWeights", "patients");
+                });
+
             modelBuilder.Entity("Patients.Domain.Entities.PatientDocument", b =>
                 {
                     b.HasOne("VCare.Modules.Patients.Domain.Entities.Patient", null)
@@ -226,13 +346,35 @@ namespace VCare.Modules.Patients.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("VCare.Modules.Patients.Domain.Entities.PatientAttorney", b =>
+                {
+                    b.HasOne("VCare.Modules.Patients.Domain.Entities.Patient", null)
+                        .WithMany("Attorneys")
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("VCare.Modules.Patients.Domain.Entities.PatientWeight", b =>
+                {
+                    b.HasOne("VCare.Modules.Patients.Domain.Entities.Patient", null)
+                        .WithMany("Weights")
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("VCare.Modules.Patients.Domain.Entities.Patient", b =>
                 {
                     b.Navigation("Absences");
 
                     b.Navigation("Allergies");
 
+                    b.Navigation("Attorneys");
+
                     b.Navigation("Documents");
+
+                    b.Navigation("Weights");
                 });
 #pragma warning restore 612, 618
         }

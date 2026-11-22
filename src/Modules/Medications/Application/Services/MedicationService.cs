@@ -160,6 +160,10 @@ namespace Medications.Application.Services
             {
                 return Result.Failure<MedicationAdministrationResponse>(MedicationErrors.OrderNotActiveThen);
             }
+            if (await HadLeftAsync(patientId, scheduledFor, token))
+            {
+                return Result.Failure<MedicationAdministrationResponse>(MedicationErrors.ResidentLeftHome);
+            }
 
             // One rule, shared with the MAR chart and the missed-dose recorder.
             var now = await NowAsync(token);
@@ -291,6 +295,10 @@ namespace Medications.Application.Services
             if (now - administeredAt > DoseWindow.LateRecordingLimit)
             {
                 return Result.Failure<MedicationAdministrationResponse>(MedicationErrors.RecordingWindowClosed);
+            }
+            if (await HadLeftAsync(patientId, administeredAt, token))
+            {
+                return Result.Failure<MedicationAdministrationResponse>(MedicationErrors.ResidentLeftHome);
             }
             var givenOn = DateOnly.FromDateTime(administeredAt);
             if (givenOn < order.StartDate || (order.EndDate is { } end && givenOn > end))
@@ -458,6 +466,11 @@ namespace Medications.Application.Services
                 return Result.Failure(MedicationErrors.WitnessNotFound);
             return Result.Success();
         }
+
+        // Discharged or died by then: no dose is the home's to give or to record.
+        private async Task<bool> HadLeftAsync(Guid patientId, DateTime at, CancellationToken token) =>
+            (await absences.OverlappingAsync([patientId], at, at, token))
+                .Any(a => a.Kind is AbsenceKind.Discharged or AbsenceKind.Deceased && a.Covers(at));
 
         private Task<IReadOnlyList<ResidentAbsence>> AwayDuringAsync(Guid patientId, DateOnly day, CancellationToken token) =>
             absences.OverlappingAsync([patientId], day.ToDateTime(TimeOnly.MinValue), day.ToDateTime(TimeOnly.MaxValue), token);

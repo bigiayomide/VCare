@@ -32,6 +32,151 @@ internal sealed class Patient : AggregateRoot<PatientId>
     public List<PatientAllergy> Allergies { get; private set; } = [];
     public List<PatientAbsence> Absences { get; private set; } = [];
 
+    public string? NhsNumber { get; private set; }
+    public string? GpName { get; private set; }
+    public string? GpPractice { get; private set; }
+    public string? GpPhone { get; private set; }
+    public string? Room { get; private set; }
+    public DateOnly? AdmittedOn { get; private set; }
+    public ResidencyStatus Residency { get; private set; }
+    public DateTime? LeftAt { get; private set; }
+    public string? DischargeDestination { get; private set; }
+    public List<PatientWeight> Weights { get; private set; } = [];
+    public List<PatientAttorney> Attorneys { get; private set; } = [];
+    public PatientWeight? LatestWeight => Weights.MaxBy(w => w.MeasuredAt);
+
+    private const int DetailMaxLength = 200;
+    private const int PhoneMaxLength = 30;
+    private const int RoomMaxLength = 50;
+
+    /// <summary>
+    /// The details that come with admission. Each call sets all of them: a value
+    /// left empty clears that detail.
+    /// </summary>
+    public Result UpdateCareDetails(string? nhsNumber, string? gpName, string? gpPractice, string? gpPhone,
+        string? room, DateOnly? admittedOn, DateTime at)
+    {
+        string? nhs = null;
+        if (!string.IsNullOrWhiteSpace(nhsNumber))
+        {
+            nhs = NhsNumbers.Normalise(nhsNumber);
+            if (nhs is null)
+                return Result.Failure(Error.Validation("Patients.InvalidNhsNumber",
+                    "That isn't a valid NHS number: it must be 10 digits, and the last is a check digit."));
+        }
+        foreach (var (value, name, max) in new[]
+                 {
+                     (gpName, "GP name", DetailMaxLength), (gpPractice, "GP practice", DetailMaxLength),
+                     (gpPhone, "GP phone number", PhoneMaxLength), (room, "Room", RoomMaxLength)
+                 })
+        {
+            if (value?.Trim().Length > max)
+                return Result.Failure(Error.Validation("Patients.DetailTooLong", $"{name} can be at most {max} characters."));
+        }
+
+        NhsNumber = nhs;
+        GpName = Clean(gpName);
+        GpPractice = Clean(gpPractice);
+        GpPhone = Clean(gpPhone);
+        Room = Clean(room);
+        AdmittedOn = admittedOn;
+        ModifiedAt = at;
+        return Result.Success();
+    }
+
+    public Result<PatientWeight> RecordWeight(decimal kilograms, DateTime measuredAt, Guid staffId, DateTime at)
+    {
+        if (kilograms <= 0 || kilograms > 400)
+            return Result.Failure<PatientWeight>(Error.Validation("Patients.InvalidWeight",
+                "The weight must be more than 0 and at most 400 kg."));
+        var weight = PatientWeight.Create(Id, decimal.Round(kilograms, 1), measuredAt, staffId, at);
+        Weights.Add(weight);
+        ModifiedAt = at;
+        return Result.Success(weight);
+    }
+
+    /// <summary>The resident leaves the home for good. Medications expects no dose after this.</summary>
+    public Result Discharge(DateTime at, string? destination, Guid staffId)
+    {
+        if (destination?.Trim().Length > DetailMaxLength)
+            return Result.Failure(Error.Validation("Patients.DetailTooLong", $"The destination can be at most {DetailMaxLength} characters."));
+        var left = Leave(ResidencyStatus.Discharged, at, staffId);
+        if (left.IsFailure)
+            return left;
+        DischargeDestination = Clean(destination);
+        return Result.Success();
+    }
+
+    /// <summary>The resident died. Medications expects no dose after this.</summary>
+    public Result RecordDeath(DateTime at, Guid staffId) => Leave(ResidencyStatus.Deceased, at, staffId);
+
+    /// <summary>A discharged resident comes back, or a discharge is undone.</summary>
+    public Result Readmit(DateOnly admittedOn, Guid staffId, DateTime at)
+    {
+        if (Residency != ResidencyStatus.Discharged)
+            return Result.Failure(Error.Conflict("Patients.NotDischarged", "Only a discharged resident can be readmitted."));
+        Residency = ResidencyStatus.Current;
+        LeftAt = null;
+        DischargeDestination = null;
+        AdmittedOn = admittedOn;
+        ModifiedAt = at;
+        return Result.Success();
+    }
+
+    private Result Leave(ResidencyStatus status, DateTime at, Guid staffId)
+    {
+        if (Residency != ResidencyStatus.Current)
+            return Result.Failure(Error.Conflict("Patients.NotResident", "This resident has already left the home."));
+        if (Absences.FirstOrDefault(a => a.IsOpen) is { } away)
+        {
+            if (at < away.StartedAt)
+                return Result.Failure(Error.Validation("Patients.LeftBeforeAbsence",
+                    "That is before the resident's current absence began."));
+            // A hospital stay ends where the residency does.
+            away.End(at, staffId);
+        }
+        Residency = status;
+        LeftAt = at;
+        ModifiedAt = at;
+        return Result.Success();
+    }
+
+    public Result<PatientAttorney> RecordAttorney(string name, AttorneyKind kind, string? phone, string? email,
+        DateOnly? registeredOn, Guid staffId, DateTime at)
+    {
+        var who = name?.Trim();
+        if (string.IsNullOrEmpty(who))
+            return Result.Failure<PatientAttorney>(Error.Validation("Patients.AttorneyNameRequired", "The attorney's name is required."));
+        if (who.Length > PatientAttorney.NameMaxLength)
+            return Result.Failure<PatientAttorney>(Error.Validation("Patients.DetailTooLong",
+                $"The name can be at most {PatientAttorney.NameMaxLength} characters."));
+        if (phone?.Trim().Length > PhoneMaxLength || email?.Trim().Length > PatientAttorney.ContactMaxLength)
+            return Result.Failure<PatientAttorney>(Error.Validation("Patients.DetailTooLong", "A contact detail is too long."));
+
+        var attorney = PatientAttorney.Create(Id, who, kind, Clean(phone), Clean(email), registeredOn, staffId, at);
+        Attorneys.Add(attorney);
+        ModifiedAt = at;
+        return Result.Success(attorney);
+    }
+
+    /// <summary>Marks an attorney recorded in error, or no longer acting, as removed. It stays on the record.</summary>
+    public Result RemoveAttorney(Guid attorneyId, string? reason, Guid staffId, DateTime at)
+    {
+        var attorney = Attorneys.FirstOrDefault(a => a.Id == attorneyId && a.IsActive);
+        if (attorney is null)
+            return Result.Failure(Error.NotFound("Patients.AttorneyNotFound", "Attorney not found."));
+        if (string.IsNullOrWhiteSpace(reason))
+            return Result.Failure(Error.Validation("Patients.RemovalReasonRequired", "Say why the attorney is being removed."));
+        if (reason.Trim().Length > PatientAttorney.ReasonMaxLength)
+            return Result.Failure(Error.Validation("Patients.DetailTooLong",
+                $"The reason can be at most {PatientAttorney.ReasonMaxLength} characters."));
+        attorney.Remove(reason.Trim(), staffId, at);
+        ModifiedAt = at;
+        return Result.Success();
+    }
+
+    private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
     private Patient() { }
 
     public Result<PatientAllergy> RecordAllergy(string substance, string? reaction, AllergySeverity severity, Guid staffId, DateTime at)

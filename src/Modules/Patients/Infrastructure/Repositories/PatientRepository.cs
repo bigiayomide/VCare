@@ -14,6 +14,8 @@ internal sealed class PatientRepository(PatientsDbContext context) : IPatientRep
         return await context.Patients
             .Include(p => p.Allergies)
             .Include(p => p.Absences)
+            .Include(p => p.Weights)
+            .Include(p => p.Attorneys)
             .AsSplitQuery()
             .FirstOrDefaultAsync(p => p.Id == patientId, cancellationToken);
     }
@@ -21,6 +23,9 @@ internal sealed class PatientRepository(PatientsDbContext context) : IPatientRep
     public async Task<IReadOnlyList<Patient>> ListAsync(CancellationToken cancellationToken = default) =>
         await context.Patients
             .AsNoTracking()
+            // For each resident's latest weight on the list.
+            .Include(p => p.Weights)
+            .AsSplitQuery()
             .OrderBy(p => p.Lastname)
             .ThenBy(p => p.Firstname)
             .ToListAsync(cancellationToken);
@@ -30,6 +35,12 @@ internal sealed class PatientRepository(PatientsDbContext context) : IPatientRep
 
     public async Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
         await context.SaveChangesAsync(cancellationToken);
+
+    public async Task<bool> NhsNumberInUseAsync(string nhsNumber, Guid exceptPatientId, CancellationToken cancellationToken = default)
+    {
+        var except = new PatientId(exceptPatientId);
+        return await context.Patients.AnyAsync(p => p.NhsNumber == nhsNumber && p.Id != except, cancellationToken);
+    }
 
     public async Task<bool> OwnsStorageKeyAsync(Guid patientId, string storageKey, CancellationToken cancellationToken = default)
     {

@@ -32,6 +32,8 @@ public class PatientDocumentTests
         public Task<bool> OwnsStorageKeyAsync(Guid patientId, string storageKey, CancellationToken cancellationToken = default) =>
             Task.FromResult(patientId == patient.Id.Value
                 && (patient.ProfilePictureUrl == storageKey || patient.GetDocuments().Any(d => d.StorageKeyName == storageKey)));
+        public Task<bool> NhsNumberInUseAsync(string nhsNumber, Guid exceptPatientId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(false);
     }
 
     private sealed class NoSaves : IUnitOfWork

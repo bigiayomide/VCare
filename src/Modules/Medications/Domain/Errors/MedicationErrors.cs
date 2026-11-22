@@ -71,6 +71,10 @@ internal static class MedicationErrors
         Error.Conflict("Medications.PrnDailyLimitReached",
             $"The maximum of {limit} doses in 24 hours has been reached.");
 
+    public static readonly Error ResidentLeftHome =
+        Error.Conflict("Medications.ResidentLeftHome",
+            "The resident had left the home by then. Nothing is recorded after a discharge or a death.");
+
     public static readonly Error OrderNotActiveThen =
         Error.Conflict("Medications.OrderNotActive", "The order was not active when this dose was due.");
 

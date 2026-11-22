@@ -96,6 +96,8 @@ public class AbsenceRecordTests
         public Task SaveChangesAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task<bool> OwnsStorageKeyAsync(Guid patientId, string storageKey, CancellationToken cancellationToken = default) =>
             Task.FromResult(false);
+        public Task<bool> NhsNumberInUseAsync(string nhsNumber, Guid exceptPatientId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(false);
     }
 
     private sealed class Caller : ICurrentUser
@@ -111,7 +113,7 @@ public class AbsenceRecordTests
         public Task<DateTime> NowAsync(Guid careHomeId, CancellationToken cancellationToken) => Task.FromResult(Now);
     }
 
-    private static (Patient Patient, ResidentRecordService Service) World()
+    internal static (Patient Patient, ResidentRecordService Service) World()
     {
         var patient = Resident();
         return (patient, new ResidentRecordService(new Repository(patient), new Caller(), new HomeClock()));

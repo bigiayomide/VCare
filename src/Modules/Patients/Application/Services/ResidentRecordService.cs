@@ -66,10 +66,11 @@ internal sealed class ResidentRecordService(IPatientRepository repository, ICurr
 
     public async Task<Result<Guid>> StartAbsenceAsync(Guid patientId, StartAbsenceRequest request, CancellationToken token)
     {
+        // Discharge and death have their own endpoints: they end the residency.
         if (string.IsNullOrWhiteSpace(request.Kind)
-            || !Enum.TryParse<AbsenceKind>(request.Kind.Trim(), ignoreCase: true, out var kind) || !Enum.IsDefined(kind))
-            return Result.Failure<Guid>(Error.Validation("Patients.InvalidAbsenceKind",
-                $"Kind must be one of: {string.Join(", ", Enum.GetNames<AbsenceKind>())}."));
+            || !Enum.TryParse<AbsenceKind>(request.Kind.Trim(), ignoreCase: true, out var kind)
+            || kind is not (AbsenceKind.Hospital or AbsenceKind.Leave))
+            return Result.Failure<Guid>(Error.Validation("Patients.InvalidAbsenceKind", "Kind must be Hospital or Leave."));
 
         var patient = await repository.GetByIdAsync(patientId, token);
         if (patient is null)
@@ -96,6 +97,101 @@ internal sealed class ResidentRecordService(IPatientRepository repository, ICurr
             return Result.Failure(Error.Validation("Patients.AbsenceInFuture", "A return is recorded when it happens, not in advance."));
         return await MutateAsync(patientId, (patient, _) => patient.EndAbsence(endedAt, currentUser.UserId), token);
     }
+
+    public async Task<Result> UpdateCareDetailsAsync(Guid patientId, UpdateCareDetailsRequest request, CancellationToken token)
+    {
+        var patient = await repository.GetByIdAsync(patientId, token);
+        if (patient is null)
+            return Result.Failure(PatientNotFound);
+        var updated = patient.UpdateCareDetails(request.NhsNumber, request.GpName, request.GpPractice, request.GpPhone,
+            request.Room, request.AdmittedOn, await NowAsync(token));
+        if (updated.IsFailure)
+            return updated;
+        // Two records with one NHS number is how a resident's medicines end up on the wrong chart.
+        if (patient.NhsNumber is { } nhs && await repository.NhsNumberInUseAsync(nhs, patientId, token))
+            return Result.Failure(Error.Conflict("Patients.NhsNumberInUse", "Another resident in this home has that NHS number."));
+        await repository.SaveChangesAsync(token);
+        return Result.Success();
+    }
+
+    public async Task<Result<IReadOnlyList<WeightResponse>>> GetWeightsAsync(Guid patientId, CancellationToken token)
+    {
+        var patient = await repository.GetByIdAsync(patientId, token);
+        if (patient is null)
+            return Result.Failure<IReadOnlyList<WeightResponse>>(PatientNotFound);
+        return Result.Success<IReadOnlyList<WeightResponse>>(
+            [.. patient.Weights.OrderBy(w => w.MeasuredAt).Select(w => new WeightResponse(w.Id, w.Kilograms, w.MeasuredAt, w.RecordedByStaffId))]);
+    }
+
+    public async Task<Result<Guid>> RecordWeightAsync(Guid patientId, RecordWeightRequest request, CancellationToken token)
+    {
+        var patient = await repository.GetByIdAsync(patientId, token);
+        if (patient is null)
+            return Result.Failure<Guid>(PatientNotFound);
+        var now = await NowAsync(token);
+        var measuredAt = request.MeasuredAt ?? now;
+        if (measuredAt > now + ClockTolerance)
+            return Result.Failure<Guid>(InFuture("A weight"));
+        var weight = patient.RecordWeight(request.Kilograms, measuredAt, currentUser.UserId, now);
+        if (weight.IsFailure)
+            return Result.Failure<Guid>(weight.Error);
+        await repository.SaveChangesAsync(token);
+        return Result.Success(weight.Value.Id);
+    }
+
+    public async Task<Result> DischargeAsync(Guid patientId, DischargeRequest request, CancellationToken token)
+    {
+        var now = await NowAsync(token);
+        var at = request.At ?? now;
+        if (at > now + ClockTolerance)
+            return Result.Failure(InFuture("A discharge"));
+        return await MutateAsync(patientId, (patient, _) => patient.Discharge(at, request.Destination, currentUser.UserId), token);
+    }
+
+    public async Task<Result> RecordDeathAsync(Guid patientId, RecordDeathRequest request, CancellationToken token)
+    {
+        var now = await NowAsync(token);
+        var at = request.At ?? now;
+        if (at > now + ClockTolerance)
+            return Result.Failure(InFuture("A death"));
+        return await MutateAsync(patientId, (patient, _) => patient.RecordDeath(at, currentUser.UserId), token);
+    }
+
+    public Task<Result> ReadmitAsync(Guid patientId, ReadmitRequest request, CancellationToken token) =>
+        MutateAsync(patientId, (patient, now) => patient.Readmit(request.AdmittedOn, currentUser.UserId, now), token);
+
+    public async Task<Result<IReadOnlyList<AttorneyResponse>>> GetAttorneysAsync(Guid patientId, CancellationToken token)
+    {
+        var patient = await repository.GetByIdAsync(patientId, token);
+        if (patient is null)
+            return Result.Failure<IReadOnlyList<AttorneyResponse>>(PatientNotFound);
+        return Result.Success<IReadOnlyList<AttorneyResponse>>(
+            [.. patient.Attorneys.OrderBy(a => a.RecordedAt).Select(a => new AttorneyResponse(a.Id, a.Name, a.Kind, a.Phone, a.Email,
+                a.RegisteredOn, a.RecordedAt, a.RecordedByStaffId, a.RemovedAt, a.RemovalReason))]);
+    }
+
+    public async Task<Result<Guid>> RecordAttorneyAsync(Guid patientId, RecordAttorneyRequest request, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(request.Kind)
+            || !Enum.TryParse<AttorneyKind>(request.Kind.Trim(), ignoreCase: true, out var kind) || !Enum.IsDefined(kind))
+            return Result.Failure<Guid>(Error.Validation("Patients.InvalidAttorneyKind",
+                "Kind must be HealthAndWelfare or PropertyAndFinancialAffairs."));
+        var patient = await repository.GetByIdAsync(patientId, token);
+        if (patient is null)
+            return Result.Failure<Guid>(PatientNotFound);
+        var attorney = patient.RecordAttorney(request.Name, kind, request.Phone, request.Email, request.RegisteredOn,
+            currentUser.UserId, await NowAsync(token));
+        if (attorney.IsFailure)
+            return Result.Failure<Guid>(attorney.Error);
+        await repository.SaveChangesAsync(token);
+        return Result.Success(attorney.Value.Id);
+    }
+
+    public Task<Result> RemoveAttorneyAsync(Guid patientId, Guid attorneyId, RemoveAttorneyRequest request, CancellationToken token) =>
+        MutateAsync(patientId, (patient, now) => patient.RemoveAttorney(attorneyId, request.Reason, currentUser.UserId, now), token);
+
+    private static Error InFuture(string what) =>
+        Error.Validation("Patients.InFuture", $"{what} is recorded when it happens, not in advance.");
 
     private Task<DateTime> NowAsync(CancellationToken token) => homeClock.NowAsync(currentUser.CareHomeId, token);
 

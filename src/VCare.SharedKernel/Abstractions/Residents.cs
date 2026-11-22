@@ -27,7 +27,11 @@ namespace VCare.SharedKernel.Abstractions
     public enum AbsenceKind
     {
         Hospital = 0,
-        Leave = 1
+        Leave = 1,
+        /// <summary>Left the home for good. No dose is expected from then on, and none is recorded.</summary>
+        Discharged = 2,
+        /// <summary>Died. No dose is expected from then on, and none is recorded.</summary>
+        Deceased = 3
     }
 
     /// <summary>
@@ -41,7 +45,8 @@ namespace VCare.SharedKernel.Abstractions
 
     /// <summary>
     /// When residents were away, owned by the Patients module. A dose due while a
-    /// resident is in hospital or on leave was not missed by the home.
+    /// resident is in hospital or on leave was not missed by the home. A resident
+    /// who was discharged or died has an absence that never ends.
     /// </summary>
     public interface IResidentAbsences
     {

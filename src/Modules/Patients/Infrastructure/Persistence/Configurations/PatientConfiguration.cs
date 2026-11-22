@@ -33,6 +33,20 @@ internal sealed class PatientConfiguration : IEntityTypeConfiguration<Patient>
         builder.Property(p => p.AllergyStatus).HasConversion<string>().HasMaxLength(30);
         builder.HasMany(p => p.Allergies).WithOne().HasForeignKey(a => a.PatientId).OnDelete(DeleteBehavior.Cascade);
         builder.HasMany(p => p.Absences).WithOne().HasForeignKey(a => a.PatientId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(p => p.Weights).WithOne().HasForeignKey(w => w.PatientId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(p => p.Attorneys).WithOne().HasForeignKey(a => a.PatientId).OnDelete(DeleteBehavior.Cascade);
+
+        builder.Property(p => p.NhsNumber).HasMaxLength(10).IsUnicode(false);
+        // One NHS number per resident within a home. A resident who moves between
+        // two homes on VCare has a record in each.
+        builder.HasIndex(p => new { p.CareHomeId, p.NhsNumber }).IsUnique().HasFilter("[NhsNumber] IS NOT NULL");
+        builder.Property(p => p.GpName).HasMaxLength(200);
+        builder.Property(p => p.GpPractice).HasMaxLength(200);
+        builder.Property(p => p.GpPhone).HasMaxLength(30);
+        builder.Property(p => p.Room).HasMaxLength(50);
+        builder.Property(p => p.Residency).HasConversion<string>().HasMaxLength(30);
+        builder.Property(p => p.DischargeDestination).HasMaxLength(200);
+        builder.Ignore(p => p.LatestWeight);
 
         // Domain events are behaviour, not persisted state.
         builder.Ignore(p => p.DomainEvents);
@@ -69,6 +83,35 @@ internal sealed class PatientAbsenceConfiguration : IEntityTypeConfiguration<Pat
         builder.Ignore(a => a.IsOpen);
         // The missed-dose recorder asks "who was away between these times".
         builder.HasIndex(a => new { a.PatientId, a.StartedAt });
+    }
+}
+
+internal sealed class PatientWeightConfiguration : IEntityTypeConfiguration<PatientWeight>
+{
+    public void Configure(EntityTypeBuilder<PatientWeight> builder)
+    {
+        builder.ToTable("PatientWeights", PatientsDbContext.Schema);
+        builder.HasKey(w => w.Id);
+        builder.Property(w => w.Id).ValueGeneratedNever();
+        builder.Property(w => w.Kilograms).HasPrecision(4, 1);
+        builder.HasIndex(w => new { w.PatientId, w.MeasuredAt });
+    }
+}
+
+internal sealed class PatientAttorneyConfiguration : IEntityTypeConfiguration<PatientAttorney>
+{
+    public void Configure(EntityTypeBuilder<PatientAttorney> builder)
+    {
+        builder.ToTable("PatientAttorneys", PatientsDbContext.Schema);
+        builder.HasKey(a => a.Id);
+        builder.Property(a => a.Id).ValueGeneratedNever();
+        builder.Property(a => a.Name).HasMaxLength(PatientAttorney.NameMaxLength).IsRequired();
+        builder.Property(a => a.Kind).HasConversion<string>().HasMaxLength(40);
+        builder.Property(a => a.Phone).HasMaxLength(30);
+        builder.Property(a => a.Email).HasMaxLength(PatientAttorney.ContactMaxLength);
+        builder.Property(a => a.RemovalReason).HasMaxLength(PatientAttorney.ReasonMaxLength);
+        builder.Ignore(a => a.IsActive);
+        builder.HasIndex(a => a.PatientId);
     }
 }
 

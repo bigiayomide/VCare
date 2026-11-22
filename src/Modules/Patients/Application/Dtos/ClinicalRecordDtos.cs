@@ -23,3 +23,31 @@ public sealed record EndAbsenceRequest(DateTime? EndedAt);
 
 public sealed record AbsenceResponse(Guid Id, AbsenceKind Kind, DateTime StartedAt, DateTime? EndedAt, string? Note,
     Guid RecordedByStaffId, Guid? EndedByStaffId);
+
+/// <summary>
+/// The details that come with admission. Every field is set by each call: one
+/// left empty clears that detail. The NHS number may be written with spaces.
+/// </summary>
+public sealed record UpdateCareDetailsRequest(string? NhsNumber, string? GpName, string? GpPractice, string? GpPhone,
+    string? Room, DateOnly? AdmittedOn);
+
+/// <summary>At is the time in the home; it defaults to now.</summary>
+public sealed record DischargeRequest(DateTime? At, string? Destination);
+
+/// <summary>At is the time in the home; it defaults to now.</summary>
+public sealed record RecordDeathRequest(DateTime? At);
+
+public sealed record ReadmitRequest(DateOnly AdmittedOn);
+
+/// <summary>MeasuredAt is the time in the home; it defaults to now. Stored to one decimal place.</summary>
+public sealed record RecordWeightRequest(decimal Kilograms, DateTime? MeasuredAt);
+
+public sealed record WeightResponse(Guid Id, decimal Kilograms, DateTime MeasuredAt, Guid RecordedByStaffId);
+
+/// <summary>Kind is HealthAndWelfare or PropertyAndFinancialAffairs.</summary>
+public sealed record RecordAttorneyRequest(string Name, string Kind, string? Phone, string? Email, DateOnly? RegisteredOn);
+
+public sealed record RemoveAttorneyRequest(string Reason);
+
+public sealed record AttorneyResponse(Guid Id, string Name, AttorneyKind Kind, string? Phone, string? Email,
+    DateOnly? RegisteredOn, DateTime RecordedAt, Guid RecordedByStaffId, DateTime? RemovedAt, string? RemovalReason);

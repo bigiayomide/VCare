@@ -26,6 +26,7 @@ public sealed class SqlServerFixture : IAsyncLifetime
 
     public string ConnectionString { get; private set; } = string.Empty;
     public VCareApi Api { get; private set; } = null!;
+    public TestHomes Homes { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
@@ -37,6 +38,7 @@ public sealed class SqlServerFixture : IAsyncLifetime
         }.ConnectionString;
         Api = new VCareApi(ConnectionString);
         await Api.MigrateAsync();
+        Homes = new TestHomes(this);
     }
 
     public async Task DisposeAsync()

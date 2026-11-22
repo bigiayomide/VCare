@@ -77,14 +77,21 @@ namespace Medications.Application.Services
                     foreach (var slot in unrecorded)
                     {
                         var absence = away.FirstOrDefault(a => a.PatientId == order.PatientId.Value && a.Covers(slot.DueAt));
-                        missed.Add(absence is null
-                            ? MedicationAdministration.RecordMissed(order, slot.DueAt, MedicationAdministration.SystemStaffId, Note, now)
-                            : MedicationAdministration.RecordAway(order, slot.DueAt,
+                        if (absence is null)
+                        {
+                            missed.Add(MedicationAdministration.RecordMissed(order, slot.DueAt, MedicationAdministration.SystemStaffId, Note, now));
+                        }
+                        else if (absence.Kind is AbsenceKind.Hospital or AbsenceKind.Leave)
+                        {
+                            missed.Add(MedicationAdministration.RecordAway(order, slot.DueAt,
                                 absence.Kind == AbsenceKind.Hospital ? OutcomeCode.InHospitalId : OutcomeCode.OnLeaveId,
                                 absence.Kind == AbsenceKind.Hospital
                                     ? "Resident in hospital; recorded automatically."
                                     : "Resident on leave; recorded automatically.",
                                 now));
+                        }
+                        // Discharged or died: the dose was never the home's to give,
+                        // so nothing is recorded for it.
                     }
                 }
             }
