@@ -14,8 +14,10 @@ cd "$(dirname "$0")/.."
 action="${1:-}"
 shift || true
 
-# project folder : context. CareHomes and Staffs first: everything else hangs off them.
+# project folder : context. Audit first: every other module writes to its table.
+# Then CareHomes and Staffs: everything else hangs off them.
 modules=(
+  "src/Modules/Audit:AuditDbContext"
   "src/Modules/CareHomes:CareHomeDbContext"
   "src/Modules/Staffs:StaffDbContext"
   "src/Modules/Patients:PatientsDbContext"

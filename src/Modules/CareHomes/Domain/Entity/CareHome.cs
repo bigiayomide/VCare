@@ -1,3 +1,4 @@
+using VCare.SharedKernel.Auditing;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,7 +9,7 @@ using VCare.SharedKernel.Results;
 
 namespace src.Modules.CareHomes.Domain.Entity
 {
-    internal class CareHome : AggregateRoot<CareHomeId>
+    internal class CareHome : AggregateRoot<CareHomeId>, IAudited
     {
         public string Name {get; private set;} = null!;
         public string Address {get; private set;} = null!;

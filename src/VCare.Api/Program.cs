@@ -24,6 +24,7 @@ using Amazon;
 using Amazon.S3;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using VCare.Api.Health;
+using VCare.Modules.Audit;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
@@ -96,6 +97,8 @@ builder.Services.AddSingleton<IJobLock>(sp =>
 
 // Each module registers its own DbContext, repositories and services.
 // The host stays a thin composition root: it knows modules exist, nothing more.
+// Audit first: it registers the interceptor every module's DbContext adds.
+builder.Services.AddAuditModule(builder.Configuration);
 builder.Services.AddPatientsModule(builder.Configuration);
 builder.Services.AddCarePlansModule(builder.Configuration);
 builder.Services.AddMedicationsModule(builder.Configuration);
@@ -140,6 +143,9 @@ app.UseAuthorization();
 // The sign-in and email-sending routes carry their own limits (see AuthRateLimits).
 app.UseRateLimiter();
 
+// Each successful read of a resident's record goes in the audit trail.
+app.UseResidentRecordAudit();
+
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }).AllowAnonymous();
 
@@ -153,6 +159,7 @@ app.AddMarchartEndpoint();
 app.AddCareHomeEndpoint();
 app.AddCarePlanEndpoint();
 app.AddCareHomeRegistrationEndpoint();
+app.AddAuditEndpoints();
 
 // The fallback policy requires a signed-in caller everywhere, which also covered
 // the API description: a developer had to have a token to read how to get one.

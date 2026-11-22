@@ -1,3 +1,4 @@
+using VCare.SharedKernel.Auditing;
 using VCare.SharedKernel.Abstractions;
 using VCare.SharedKernel.Results;
 using Visitation.Domain.Entities;
@@ -6,7 +7,7 @@ namespace VCare.Modules.Visitation.Domain.Entities;
 
 // One staff member's attendance at a visit. Created at check-in and closed at
 // check-out, when the care given is recorded. Only reached through its Visit.
-internal sealed class VisitRecord
+internal sealed class VisitRecord : IAudited
 {
     public Guid Id {get; private set;}
     public VisitId VisitId {get; private set;}

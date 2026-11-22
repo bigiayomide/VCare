@@ -1,3 +1,4 @@
+using VCare.SharedKernel.Auditing;
 using VCare.SharedKernel.Abstractions;
 
 namespace VCare.Modules.Patients.Domain.Entities;
@@ -18,7 +19,7 @@ public enum AttorneyKind
 }
 
 /// <summary>A weight on a given day. Kept as a history: dosing and nutrition care need the trend.</summary>
-internal sealed class PatientWeight
+internal sealed class PatientWeight : IAudited
 {
     public Guid Id { get; private set; }
     public PatientId PatientId { get; private set; }
@@ -47,7 +48,7 @@ internal sealed class PatientWeight
 /// refuse on the resident's behalf once they lack capacity. Never deleted: one
 /// recorded in error is marked removed, with who removed it and why.
 /// </summary>
-internal sealed class PatientAttorney
+internal sealed class PatientAttorney : IAudited
 {
     public const int NameMaxLength = 200;
     public const int ContactMaxLength = 200;

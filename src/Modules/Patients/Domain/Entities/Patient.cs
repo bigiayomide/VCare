@@ -1,3 +1,4 @@
+using VCare.SharedKernel.Auditing;
 using Patients.Domain.Entities;
 using VCare.Modules.Patients.Domain.Events;
 using VCare.SharedKernel.Abstractions;
@@ -6,7 +7,7 @@ using VCare.SharedKernel.Results;
 
 namespace VCare.Modules.Patients.Domain.Entities;
 
-internal sealed class Patient : AggregateRoot<PatientId>
+internal sealed class Patient : AggregateRoot<PatientId>, IAudited
 {
     public string Firstname { get; private set; } = null!;
     public string Lastname { get; private set; } = null!;

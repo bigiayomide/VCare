@@ -1,3 +1,4 @@
+using VCare.SharedKernel.Auditing;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
@@ -19,10 +20,11 @@ public static class PatientsModule
         this IServiceCollection services,
         IConfiguration configuration) 
     {
-        services.AddDbContext<PatientsDbContext>(options =>
+        services.AddDbContext<PatientsDbContext>((sp, options) =>
             options.UseSqlServer(
                 configuration.GetConnectionString("Default"),
-                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", PatientsDbContext.Schema)));
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", PatientsDbContext.Schema))
+                .AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>()));
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<PatientsDbContext>());
         services.AddScoped<IPatientRepository, PatientRepository>();
         services.AddScoped<IPatientService, PatientService>();

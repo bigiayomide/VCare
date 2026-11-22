@@ -1,3 +1,4 @@
+using VCare.SharedKernel.Auditing;
 using Medications.Domain.Enum;
 using VCare.SharedKernel.Abstractions;
 
@@ -9,7 +10,7 @@ namespace Medications.Domain.Entities
     /// losing which doses were expected while it was held: those doses were never
     /// due, so they are neither missed nor signable.
     /// </summary>
-    internal sealed class OrderStatusChange
+    internal sealed class OrderStatusChange : IAudited
     {
         public const int ReasonMaxLength = 500;
 

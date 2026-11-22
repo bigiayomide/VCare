@@ -1,3 +1,4 @@
+using VCare.SharedKernel.Auditing;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,7 +10,7 @@ using VCare.SharedKernel.Results;
 
 namespace Medications.Domain.Entities
 {
-    internal class DoseSchedule
+    internal class DoseSchedule : IAudited
     {
         public Guid Id { get; private set; }
         public MedicationOrderId MedicationOrderId { get; private set; }

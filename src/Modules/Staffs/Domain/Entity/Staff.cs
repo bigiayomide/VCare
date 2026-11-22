@@ -1,3 +1,4 @@
+using VCare.SharedKernel.Auditing;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,7 +10,7 @@ using VCare.SharedKernel.Results;
 
 namespace Staffs.Domain.Entity
 {
-    internal class Staff : AggregateRoot<StaffId>
+    internal class Staff : AggregateRoot<StaffId>, IAudited
     {
         public string FirstName { get; private set; } = null!;
         public string LastName { get; private set; } = null!;

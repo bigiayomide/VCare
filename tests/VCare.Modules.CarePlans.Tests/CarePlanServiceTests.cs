@@ -31,7 +31,9 @@ public class CarePlanServiceTests
             Plans.Add(carePlan);
             return Task.CompletedTask;
         }
-        public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => Task.FromResult(1);
+        public bool LoseTheRace { get; set; }
+        public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) =>
+            LoseTheRace ? throw new Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException("Another save won.") : Task.FromResult(1);
     }
 
     private sealed class FakeCurrentUser : ICurrentUser
@@ -84,5 +86,50 @@ public class CarePlanServiceTests
         await service.CreateCarePlanAsync(Resident, new CreateCarePlanRequest("Stay mobile", null), CancellationToken.None);
 
         Assert.Equal(caller.UserId, Assert.Single(plans.Plans).StaffId);
+    }
+
+    private static (FakePlans Plans, CarePlanService Service, CarePlan Plan) WithAPlan()
+    {
+        var plans = new FakePlans();
+        var plan = CarePlan.Create(Resident, "Stay mobile", Guid.NewGuid(), CareHome, null).Value;
+        plans.Plans.Add(plan);
+        return (plans, new CarePlanService(plans, new FakeCurrentUser(), new FakePatients(Resident)), plan);
+    }
+
+    [Fact]
+    public async Task An_edit_based_on_an_old_version_is_a_conflict()
+    {
+        var (_, service, plan) = WithAPlan();
+        await service.UpdateCarePlanAsync(Resident, plan.Id.Value, new UpdateCarePlanRequest(null, "First edit", 1), CancellationToken.None);
+
+        var result = await service.UpdateCarePlanAsync(Resident, plan.Id.Value, new UpdateCarePlanRequest(null, "Second edit", 1), CancellationToken.None);
+
+        Assert.Equal(ErrorKind.Conflict, result.Error.Kind);
+        Assert.Equal("CarePlans.EditConflict", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task An_edit_that_loses_a_race_to_another_save_is_a_conflict()
+    {
+        var (plans, service, plan) = WithAPlan();
+        plans.LoseTheRace = true;
+
+        var result = await service.UpdateCarePlanAsync(Resident, plan.Id.Value, new UpdateCarePlanRequest(null, "Edit", 1), CancellationToken.None);
+
+        Assert.Equal("CarePlans.EditConflict", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task The_versions_of_a_care_plan_are_listed_oldest_first()
+    {
+        var (_, service, plan) = WithAPlan();
+        await service.UpdateCarePlanAsync(Resident, plan.Id.Value, new UpdateCarePlanRequest(null, "Second", 1), CancellationToken.None);
+        await service.UpdateCarePlanAsync(Resident, plan.Id.Value, new UpdateCarePlanRequest(null, "Third", 2), CancellationToken.None);
+
+        var versions = await service.GetVersionsAsync(Resident, CancellationToken.None);
+        var third = await service.GetVersionAsync(Resident, 3, CancellationToken.None);
+
+        Assert.Equal([1, 2, 3], versions.Value.Select(v => v.Number));
+        Assert.Equal("Third", third.Value.Goal);
     }
 }

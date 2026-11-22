@@ -18,7 +18,7 @@ public sealed class SqlServerFixture : IAsyncLifetime
     // Every module's DbContext, in the order scripts/migrations.sh applies them.
     internal static readonly string[] MigrationOrder =
     [
-        "CareHomeDbContext", "StaffDbContext", "PatientsDbContext",
+        "AuditDbContext", "CareHomeDbContext", "StaffDbContext", "PatientsDbContext",
         "CarePlanDbContext", "MedicationDbContext", "VisitationDbContext",
     ];
 

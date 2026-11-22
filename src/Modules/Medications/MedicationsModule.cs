@@ -1,3 +1,4 @@
+using VCare.SharedKernel.Auditing;
 using Medications.Application.Abstracts;
 using Medications.Application.Services;
 using Medications.Application.Services.Interfaces;
@@ -16,10 +17,11 @@ public static class MedicationsModule
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.AddDbContext<MedicationDbContext>(options =>
+        services.AddDbContext<MedicationDbContext>((sp, options) =>
             options.UseSqlServer(
                 configuration.GetConnectionString("Default"),
-                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", MedicationDbContext.Schema)));
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", MedicationDbContext.Schema))
+                .AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>()));
 
         // The repositories own the save. IUnitOfWork is registered unkeyed by
         // PatientsModule, so resolving it here would hand this module the Patients

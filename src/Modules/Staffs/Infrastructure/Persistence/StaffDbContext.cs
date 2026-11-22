@@ -1,3 +1,4 @@
+using VCare.SharedKernel.Auditing;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -60,6 +61,8 @@ namespace Staffs.Infrastructure.Persistence
             modelBuilder.HasDefaultSchema(schemaName);
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(StaffDbContext).Assembly);
 
+            // Audit rows are written in the same save as the change (see AuditSaveChangesInterceptor).
+            modelBuilder.MapAuditEntries();
             // Care home isolation: a caller can only ever read staff from their own care home,
             // regardless of role. Writes are stamped with the care home at creation time.
             modelBuilder.Entity<Staff>().HasQueryFilter(s => s.CareHomeId == CurrentCareHome);

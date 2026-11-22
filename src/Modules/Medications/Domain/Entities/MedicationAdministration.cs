@@ -1,10 +1,11 @@
+using VCare.SharedKernel.Auditing;
 using VCare.SharedKernel.Abstractions;
 using VCare.SharedKernel.Domain;
 using VCare.SharedKernel.Results;
 
 namespace Medications.Domain.Entities
 {
-    internal class MedicationAdministration: Entity<MedicationAdministrationId>
+    internal class MedicationAdministration: Entity<MedicationAdministrationId>, IAudited
     {
 
         public PatientId PatientId {get; private set;}

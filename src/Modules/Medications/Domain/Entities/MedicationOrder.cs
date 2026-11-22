@@ -1,3 +1,4 @@
+using VCare.SharedKernel.Auditing;
 using Medications.Domain.Enum;
 using Medications.Domain.Errors;
 using VCare.SharedKernel.Abstractions;
@@ -6,7 +7,7 @@ using VCare.SharedKernel.Results;
 
 namespace Medications.Domain.Entities
 {
-    internal sealed class MedicationOrder : AggregateRoot<MedicationOrderId>
+    internal sealed class MedicationOrder : AggregateRoot<MedicationOrderId>, IAudited
     {
         public PatientId PatientId { get; private set; }
         public CareHomeId CareHomeId { get; private set; }

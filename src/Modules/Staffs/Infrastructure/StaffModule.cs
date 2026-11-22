@@ -1,3 +1,4 @@
+using VCare.SharedKernel.Auditing;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -53,8 +54,9 @@ namespace Staffs.Infrastructure
        
         public static IServiceCollection AddStaffModule(this IServiceCollection services, IConfiguration configuration)
         {
-            services.AddDbContext<Staffs.Infrastructure.Persistence.StaffDbContext>(options =>
-                options.UseSqlServer(configuration.GetConnectionString("Default"), sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", StaffDbContext.schemaName)));
+            services.AddDbContext<Staffs.Infrastructure.Persistence.StaffDbContext>((sp, options) =>
+                options.UseSqlServer(configuration.GetConnectionString("Default"), sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", StaffDbContext.schemaName))
+                    .AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>()));
 
             services.AddScoped<Staffs.Application.Abstraction.IStaffRepository, Staffs.Infrastructure.Repositories.StaffRepository>();
             services.AddScoped<Staffs.Application.Services.Interface.IStaffService, Staffs.Application.Services.StaffService>();

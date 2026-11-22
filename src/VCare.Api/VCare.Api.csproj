@@ -17,6 +17,7 @@
     <ProjectReference Include="..\Modules\Staffs\VCare.Modules.Staffs.csproj" />
     <ProjectReference Include="..\Modules\CareHomes\VCare.Modules.CareHome.csproj" />
     <ProjectReference Include="..\Modules\Visitation\VCare.Modules.Visitation.csproj" />
+    <ProjectReference Include="..\Modules\Audit\VCare.Modules.Audit.csproj" />
      <ProjectReference Include="..\Modules\Notifications\VCare.Modules.Notifications.csproj" />
     
 

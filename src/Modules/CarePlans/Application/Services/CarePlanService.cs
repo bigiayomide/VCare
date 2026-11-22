@@ -48,12 +48,20 @@ internal sealed class CarePlanService(ICarePlanRepository carePlanRepository, IC
 
         var result = carePlan.Update(
             request.Diagnoses?.Select(d => (d.Name, d.GoalDescription, d.Intervention)),
-            request.Goal);
+            request.Goal, request.Version, currentUser.UserId, DateTime.UtcNow);
 
         if (result.IsFailure)
             return result;
 
-        await carePlanRepository.SaveChangesAsync(token);
+        try
+        {
+            await carePlanRepository.SaveChangesAsync(token);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            // Another edit to the same version was saved between our read and this save.
+            return Result.Failure(CarePlan.EditConflict(null));
+        }
         return Result.Success();
     }
 
@@ -70,6 +78,29 @@ internal sealed class CarePlanService(ICarePlanRepository carePlanRepository, IC
             carePlan.StaffId,
             carePlan.Diagnoses.Select(d => new DiagnosisResponse(d.Name, d.GoalDescription, d.Intervention)).ToList(),
             carePlan.CreatedDate,
-            carePlan.ModifiedDate));
+            carePlan.ModifiedDate,
+            carePlan.Version));
     }
+
+    public async Task<Result<IReadOnlyList<CarePlanVersionSummary>>> GetVersionsAsync(Guid patientId, CancellationToken token)
+    {
+        var carePlan = await carePlanRepository.GetForPatientAsync(new PatientId(patientId), token);
+        if (carePlan is null)
+            return Result.Failure<IReadOnlyList<CarePlanVersionSummary>>(NotFound);
+        return Result.Success<IReadOnlyList<CarePlanVersionSummary>>(
+            [.. carePlan.Versions.OrderBy(v => v.Number).Select(v => new CarePlanVersionSummary(v.Number, v.EditedByStaffId, v.EditedAt))]);
+    }
+
+    public async Task<Result<CarePlanVersionResponse>> GetVersionAsync(Guid patientId, int number, CancellationToken token)
+    {
+        var carePlan = await carePlanRepository.GetForPatientAsync(new PatientId(patientId), token);
+        var version = carePlan?.Versions.FirstOrDefault(v => v.Number == number);
+        if (version is null)
+            return Result.Failure<CarePlanVersionResponse>(Error.NotFound("CarePlans.VersionNotFound", "That version of the care plan doesn't exist."));
+        return Result.Success(new CarePlanVersionResponse(version.Number, version.Goal,
+            [.. version.ReadDiagnoses().Select(d => new DiagnosisResponse(d.Name, d.GoalDescription, d.Intervention))],
+            version.EditedByStaffId, version.EditedAt));
+    }
+
+    private static readonly Error NotFound = Error.NotFound("CarePlans.NotFound", "Care plan not found.");
 }

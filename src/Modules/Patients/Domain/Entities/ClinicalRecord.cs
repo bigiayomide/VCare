@@ -1,3 +1,4 @@
+using VCare.SharedKernel.Auditing;
 using VCare.SharedKernel.Abstractions;
 
 namespace VCare.Modules.Patients.Domain.Entities;
@@ -27,7 +28,7 @@ public enum AllergySeverity
 /// marked removed, with who removed it and why, so the record shows what staff
 /// were told at the time.
 /// </summary>
-internal sealed class PatientAllergy
+internal sealed class PatientAllergy : IAudited
 {
     public const int SubstanceMaxLength = 200;
     public const int TextMaxLength = 500;
@@ -72,7 +73,7 @@ internal sealed class PatientAllergy
 /// are wall-clock times in the home, like dose times, so Medications can tell
 /// which doses fell while they were away.
 /// </summary>
-internal sealed class PatientAbsence
+internal sealed class PatientAbsence : IAudited
 {
     public const int NoteMaxLength = 500;
 
