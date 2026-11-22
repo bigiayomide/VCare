@@ -116,6 +116,11 @@ internal sealed class Patient : AggregateRoot<PatientId>, IAudited
     {
         if (Residency != ResidencyStatus.Discharged)
             return Result.Failure(Error.Conflict("Patients.NotDischarged", "Only a discharged resident can be readmitted."));
+        // The time away stays on the record as a closed absence, so doses due while
+        // they were discharged are still not counted as missed.
+        var away = PatientAbsence.Start(Id, AbsenceKind.Discharged, LeftAt!.Value, DischargeDestination, staffId);
+        away.End(at, staffId);
+        Absences.Add(away);
         Residency = ResidencyStatus.Current;
         LeftAt = null;
         DischargeDestination = null;

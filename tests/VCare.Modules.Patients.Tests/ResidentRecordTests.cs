@@ -136,6 +136,22 @@ public class ResidentRecordTests
     }
 
     [Fact]
+    public void Readmission_keeps_the_time_away_on_the_record()
+    {
+        // Without it, the missed-dose job (which looks back a week) would count
+        // every dose due while the resident was discharged as missed.
+        var patient = Resident();
+        patient.Discharge(Monday, null, Manager);
+
+        patient.Readmit(new DateOnly(2026, 11, 20), Manager, Monday.AddDays(4));
+
+        var away = Assert.Single(patient.Absences);
+        Assert.Equal(AbsenceKind.Discharged, away.Kind);
+        Assert.Equal(Monday, away.StartedAt);
+        Assert.Equal(Monday.AddDays(4), away.EndedAt);
+    }
+
+    [Fact]
     public void An_attorney_is_kept_apart_from_next_of_kin_and_is_never_deleted()
     {
         var patient = Resident();
