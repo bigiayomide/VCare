@@ -13,7 +13,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Staffs.Infrastructure.Persistence;
-using System.Data.Common;
 using VCare.SharedKernel.Domain;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
@@ -54,10 +53,8 @@ namespace Staffs.Infrastructure
        
         public static IServiceCollection AddStaffModule(this IServiceCollection services, IConfiguration configuration)
         {
-            // Connection comes from DI, shared with OutboxDbContext so that
-            // CommitandSaveAsync can enlist the outbox in its transaction.
-            services.AddDbContext<Staffs.Infrastructure.Persistence.StaffDbContext>((sp, options) =>
-                options.UseSqlServer(sp.GetRequiredService<DbConnection>(), sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", StaffDbContext.schemaName)));
+            services.AddDbContext<Staffs.Infrastructure.Persistence.StaffDbContext>(options =>
+                options.UseSqlServer(configuration.GetConnectionString("Default"), sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", StaffDbContext.schemaName)));
 
             services.AddScoped<Staffs.Application.Abstraction.IStaffRepository, Staffs.Infrastructure.Repositories.StaffRepository>();
             services.AddScoped<Staffs.Application.Services.Interface.IStaffService, Staffs.Application.Services.StaffService>();

@@ -68,7 +68,6 @@ tables or types. The host is a thin composition root that wires the modules toge
 | Medications | Medication orders, dose schedules, administrations, outcome codes, the MAR chart |
 | Visitation | Scheduled visits, staff assignment, check-in and check-out records |
 | Notifications | Sending email over SMTP |
-| Outbox | A queue table written in the same transaction as the change that caused it. Emails are currently sent directly, so nothing is queued and the background drain is not started |
 
 Documents and profile images are stored in Amazon S3.
 
@@ -87,7 +86,6 @@ VCare/
 │       ├── CarePlans/
 │       ├── Medications/
 │       ├── Notifications/
-│       ├── Outbox/
 │       ├── Patients/
 │       ├── Staffs/
 │       └── Visitation/

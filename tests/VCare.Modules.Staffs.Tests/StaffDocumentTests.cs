@@ -55,7 +55,6 @@ public class StaffDocumentTests
 
     private sealed class NoEmail : INotification
     {
-        public Task<Result> ProcessEmailNotificationAsync(string payload, string payloadName, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<Result> SendEmailVerificationLinkAsync(string email, string userName, string url, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<Result> SendPasswordResetLinkAsync(string email, string url, CancellationToken cancellationToken) => throw new NotSupportedException();
     }

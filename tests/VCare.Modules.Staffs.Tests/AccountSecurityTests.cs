@@ -41,11 +41,6 @@ internal sealed class SignInWorld : IAsyncDisposable
         public Task DispatchAsync(IEnumerable<IDomainEvent> domainEvents, CancellationToken ct = default) => Task.CompletedTask;
     }
 
-    private sealed class NoOutbox : IOutboxParticipant
-    {
-        public Task<Result> FlushAsync(DbTransaction transaction, CancellationToken cancellationToken) => Task.FromResult(Result.Success());
-    }
-
     /// <summary>Issues dummy tokens and records which sessions were ended and with what stamp tokens were minted.</summary>
     internal sealed class Sessions : IRefreshToken
     {
@@ -94,7 +89,6 @@ internal sealed class SignInWorld : IAsyncDisposable
         services.AddDataProtection();
         services.AddSingleton<ICurrentUser, NoCaller>();
         services.AddSingleton<IDomainEventDispatcher, NoEvents>();
-        services.AddSingleton<IOutboxParticipant, NoOutbox>();
         var database = Guid.NewGuid().ToString();
         services.AddDbContext<StaffDbContext>(o => o.UseInMemoryDatabase(database));
         services.AddIdentityCore<ApplicationUser>(StaffModule.ConfigureIdentity)
@@ -314,7 +308,6 @@ public class StaffAccountTests
     /// <summary>Fails the test if anything is sent.</summary>
     private sealed class NoEmail : INotification
     {
-        public Task<Result> ProcessEmailNotificationAsync(string payload, string payloadName, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<Result> SendEmailVerificationLinkAsync(string email, string userName, string url, CancellationToken cancellationToken) => Task.FromResult(Result.Success());
         public Task<Result> SendPasswordResetLinkAsync(string email, string url, CancellationToken cancellationToken) => throw new InvalidOperationException("Nothing should be sent.");
     }

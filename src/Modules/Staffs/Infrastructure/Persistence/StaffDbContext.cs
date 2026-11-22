@@ -14,7 +14,7 @@ using VCare.SharedKernel.Services;
 namespace Staffs.Infrastructure.Persistence
 {
     internal class StaffDbContext(DbContextOptions<StaffDbContext> options, ICurrentUser currentUser,
-     IDomainEventDispatcher domainEventDispatcher, IOutboxParticipant outboxParticipant)
+     IDomainEventDispatcher domainEventDispatcher)
         : IdentityDbContext<ApplicationUser, ApplicationRole, Guid>(options), IUnitOfWork
     {
         public static string schemaName = "Auth";
@@ -35,7 +35,6 @@ namespace Staffs.Infrastructure.Persistence
                  // acceptAllChangesOnSuccess: false -- the transaction can still roll back
                  // below, and the tracker must not pretend these rows already landed.
                 var written = await SaveChangesAsync(acceptAllChangesOnSuccess: false, cancellationToken);
-                await outboxParticipant.FlushAsync(transaction.GetDbTransaction(), cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
 
                 // Only now does the tracked state match the database.

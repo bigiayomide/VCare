@@ -16,9 +16,6 @@ using VCare.SharedKernel.Abstractions;
 using VCare.SharedKernel.Domain;
 using VCare.SharedKernel.Services;
 using Notifications;
-using Outbox.Infrastructure.Configuration;
-using System.Data.Common;
-using Microsoft.Data.SqlClient;
 using Scalar.AspNetCore;
 using CarePlans.Presentation;
 using Microsoft.AspNetCore.Authorization;
@@ -80,18 +77,10 @@ builder.Services.AddStaffModule(builder.Configuration);
 builder.Services.AddCareHomeModule(builder.Configuration);
 builder.Services.AddVisitationModule(builder.Configuration);
 
-// StaffDbContext and OutboxDbContext share this one connection per request:
-// UseTransaction can only enlist a transaction opened on the very same
-// connection, which is what lets a staff write and its outbox row commit as one.
-builder.Services.AddScoped<DbConnection>(_ =>
-    new SqlConnection(builder.Configuration.GetConnectionString("Default")));
-
 builder.Services.AddOptions<StorageEntity>().Bind(builder.Configuration.GetSection("Storage")).ValidateDataAnnotations();
 
-// Outbox owns the queue table that Staffs' transaction enlists. Nothing enqueues
-// to it any more (emails are sent directly), so its background drain is not run.
-// Notifications owns delivery.
-builder.Services.AddOutboxModule(builder.Configuration);
+// Notifications sends email directly over SMTP. A failed send is logged and the
+// staff member asks for the link again; there is no queue.
 builder.Services.AddNotificationModule(builder.Configuration);
 
 // Creates a care home and its first admin together, across CareHomes and Staffs.

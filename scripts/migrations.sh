@@ -18,7 +18,6 @@ shift || true
 modules=(
   "src/Modules/CareHomes:CareHomeDbContext"
   "src/Modules/Staffs:StaffDbContext"
-  "src/Modules/Outbox:OutboxDbContext"
   "src/Modules/Patients:PatientsDbContext"
   "src/Modules/CarePlans:CarePlanDbContext"
   "src/Modules/Medications:MedicationDbContext"

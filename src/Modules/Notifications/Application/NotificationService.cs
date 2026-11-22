@@ -13,11 +13,6 @@ namespace Notifications.Application
 {
     internal class NotificationService(ISmtpEmailSender emailSender) : INotification
     {
-        // Nothing is queued in the outbox any more: verification and password reset
-        // emails are sent directly. Any message the outbox still hands over is unknown.
-        public Task<Result> ProcessEmailNotificationAsync(string payload, string payloadName, CancellationToken cancellationToken) =>
-            Task.FromResult(Result.Failure(new Error("404","payload type does not exist",ErrorKind.NotFound)));
-
         public async Task<Result> SendEmailVerificationLinkAsync(string email, string userName, string url, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(url))
