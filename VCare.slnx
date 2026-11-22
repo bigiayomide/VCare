@@ -22,5 +22,6 @@
     <Project Path="tests/VCare.Modules.Staffs.Tests/VCare.Modules.Staffs.Tests.csproj" />
     <Project Path="tests/VCare.Modules.CareHomes.Tests/VCare.Modules.CareHomes.Tests.csproj" />
     <Project Path="tests/VCare.Api.Tests/VCare.Api.Tests.csproj" />
+    <Project Path="tests/VCare.IntegrationTests/VCare.IntegrationTests.csproj" />
   </Folder>
 </Solution>

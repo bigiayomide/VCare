@@ -17,6 +17,8 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.12" />
     <!-- Tests only: boots the API in memory to inspect its endpoints. -->
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
+    <!-- Tests only: SQL Server in Docker for the integration tests. -->
+    <PackageVersion Include="Testcontainers.MsSql" Version="4.15.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.0.0" />
     <PackageVersion Include="Mapster" Version="10.0.12" />
     <PackageVersion Include="Scalar.AspNetCore" Version="2.17.13" />

@@ -39,9 +39,10 @@ public static class MedicationsModule
         // Stores "Missed" for doses whose grace hour ran out unsigned (DoseWindow).
         services.AddScoped<MissedDoseRecorder>();
 
-        // Every instance of the API would otherwise run the same pass over every
-        // care home. The unique (order, slot) index keeps the result right, but the
-        // work is repeated; when running several instances, leave it on for one.
+        // Each pass takes a database lock (IJobLock), so with several instances
+        // only one does the work. BackgroundJobs:Enabled=false still turns the
+        // timer off entirely, for an instance that should never run jobs.
+        services.AddScoped<MissedDoseJob>();
         if (configuration.GetValue("BackgroundJobs:Enabled", true))
         {
             services.AddHostedService<MissedDoseBackgroundService>();

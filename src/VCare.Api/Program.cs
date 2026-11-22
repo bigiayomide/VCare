@@ -68,6 +68,11 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
         sp.GetRequiredService<IOptions<StorageEntity>>().Value.Region)));
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 
+// Background jobs take a database lock per pass, so with several instances of
+// the API only one does each pass.
+builder.Services.AddSingleton<IJobLock>(sp =>
+    new SqlServerJobLock(sp.GetRequiredService<IConfiguration>().GetConnectionString("Default")!));
+
 // Each module registers its own DbContext, repositories and services.
 // The host stays a thin composition root: it knows modules exist, nothing more.
 builder.Services.AddPatientsModule(builder.Configuration);
