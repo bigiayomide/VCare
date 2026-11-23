@@ -16,3 +16,15 @@ public sealed record PatientResponse(Guid Id, string FullName, DateOnly DateOfBi
         p.NhsNumber, p.Room, p.GpName, p.GpPractice, p.GpPhone, p.AdmittedOn, p.Residency, p.LeftAt,
         p.LatestWeight?.Kilograms, p.LatestWeight?.MeasuredAt);
 }
+
+/// <summary>
+/// A row of the resident list: enough to find the right resident and see whether
+/// they have allergies. Their NHS number, GP and weight are on <see cref="PatientResponse"/>,
+/// read one resident at a time so each read goes in that resident's audit trail.
+/// </summary>
+public sealed record PatientListItem(Guid Id, string FullName, DateOnly DateOfBirth, AllergyStatus AllergyStatus,
+    string? Room, ResidencyStatus Residency)
+{
+    internal static PatientListItem From(Patient p) =>
+        new(p.Id.Value, p.FullName, p.DateOfBirth, p.AllergyStatus, p.Room, p.Residency);
+}

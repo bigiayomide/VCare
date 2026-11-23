@@ -37,7 +37,8 @@ public sealed record DischargeRequest(DateTime? At, string? Destination);
 /// <summary>At is the time in the home; it defaults to now.</summary>
 public sealed record RecordDeathRequest(DateTime? At);
 
-public sealed record ReadmitRequest(DateOnly AdmittedOn);
+/// <summary>At is when the resident came back, as the time in the home; it defaults to now.</summary>
+public sealed record ReadmitRequest(DateTime? At);
 
 /// <summary>MeasuredAt is the time in the home; it defaults to now. Stored to one decimal place.</summary>
 public sealed record RecordWeightRequest(decimal Kilograms, DateTime? MeasuredAt);

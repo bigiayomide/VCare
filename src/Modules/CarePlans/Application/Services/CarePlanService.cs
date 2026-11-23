@@ -57,9 +57,13 @@ internal sealed class CarePlanService(ICarePlanRepository carePlanRepository, IC
         {
             await carePlanRepository.SaveChangesAsync(token);
         }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex)
+            when (ex is Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException
+                  || ex.InnerException is Microsoft.Data.SqlClient.SqlException { Number: 2601 or 2627 })
         {
-            // Another edit to the same version was saved between our read and this save.
+            // Another edit to the same version was saved between our read and this
+            // save. Depending on which write reaches the database first, that shows
+            // as the plan's version check or as the new version's number already taken.
             return Result.Failure(CarePlan.EditConflict(null));
         }
         return Result.Success();

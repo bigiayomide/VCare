@@ -51,9 +51,32 @@ public class ResidentRecordTests(SqlServerFixture sql)
             Assert.Null(left.EndedAt);
         }
 
-        Assert.Equal(HttpStatusCode.NoContent, (await api.PostAsJsonAsync($"/api/patient/{resident}/readmit", new { admittedOn = "2026-11-25" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await api.PostAsJsonAsync($"/api/patient/{resident}/readmit", new { at = (DateTime?)null })).StatusCode);
         summary = await api.GetFromJsonAsync<JsonElement>($"/api/patient/{resident}");
         Assert.Equal(0, summary.GetProperty("residency").GetInt32());
+    }
+
+    [Fact]
+    public async Task The_resident_list_leaves_out_what_only_the_audited_record_shows()
+    {
+        // The list is for finding a resident. Their NHS number, GP and weight are
+        // read one resident at a time, and each of those reads goes in their trail.
+        var home = await sql.Homes.GetAsync("Oak House");
+        var resident = await home.RegisterResidentAsync("Lola");
+        Assert.Equal(HttpStatusCode.NoContent, (await home.Admin.PutAsJsonAsync($"/api/patient/{resident}/care-details", new
+        {
+            nhsNumber = "4857773457", gpName = "Dr Okafor", gpPractice = "Riverside Surgery", gpPhone = "020 7946 0000",
+            room = "7", admittedOn = "2026-02-01",
+        })).StatusCode);
+
+        var list = (await home.Admin.GetFromJsonAsync<JsonElement>("/api/patient")).EnumerateArray();
+
+        var listed = Assert.Single(list, r => r.GetProperty("id").GetGuid() == resident);
+        Assert.Equal("7", listed.GetProperty("room").GetString());
+        Assert.Equal(0, listed.GetProperty("residency").GetInt32());
+        Assert.False(listed.TryGetProperty("nhsNumber", out _));
+        Assert.False(listed.TryGetProperty("gpName", out _));
+        Assert.False(listed.TryGetProperty("latestWeightKg", out _));
     }
 
     [Fact]

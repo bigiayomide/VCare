@@ -119,11 +119,11 @@ internal  class PatientService(
                 : PatientResponse.From(patient);
         }
 
-    public async Task<IReadOnlyList<PatientResponse>> ListAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<PatientListItem>> ListAsync(CancellationToken cancellationToken = default)
     {
         var patients = await repository.ListAsync(cancellationToken);
         return patients
-            .Select(PatientResponse.From)
+            .Select(PatientListItem.From)
             .ToList();
     }
 

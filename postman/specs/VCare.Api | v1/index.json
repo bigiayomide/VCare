@@ -2300,13 +2300,16 @@
       },
       "ReadmitRequest": {
         "required": [
-          "admittedOn"
+          "at"
         ],
         "type": "object",
         "properties": {
-          "admittedOn": {
-            "type": "string",
-            "format": "date"
+          "at": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
           }
         }
       },

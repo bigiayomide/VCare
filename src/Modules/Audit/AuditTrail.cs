@@ -23,17 +23,30 @@ internal sealed class AuditTrail(AuditDbContext context, ICurrentUser currentUse
         await context.SaveChangesAsync(cancellationToken);
     }
 
-    /// <summary>Newest first; pass the oldest OccurredAt seen as <paramref name="before"/> for the next page.</summary>
+    /// <summary>
+    /// Newest first; pass the oldest OccurredAt seen as <paramref name="before"/> for
+    /// the next page. Every entry of one save shares its moment, so a page never ends
+    /// partway through one: it takes the rest of that moment too, and can run a few
+    /// entries over <paramref name="take"/>.
+    /// </summary>
     public async Task<IReadOnlyList<AuditEntryResponse>> ForResidentAsync(Guid residentId, DateTime? before, int take,
         CancellationToken cancellationToken)
     {
         var page = Math.Clamp(take, 1, MaxPage);
-        var entries = await context.Entries
-            .AsNoTracking()
-            .Where(e => e.ResidentId == residentId && (before == null || e.OccurredAt < before))
+        var trail = context.Entries.AsNoTracking().Where(e => e.ResidentId == residentId);
+        var entries = await trail
+            .Where(e => before == null || e.OccurredAt < before)
             .OrderByDescending(e => e.OccurredAt)
             .Take(page)
             .ToListAsync(cancellationToken);
+        if (entries.Count == page)
+        {
+            var last = entries[^1].OccurredAt;
+            var onPage = entries.Where(e => e.OccurredAt == last).Select(e => e.Id).ToList();
+            entries.AddRange(await trail
+                .Where(e => e.OccurredAt == last && !onPage.Contains(e.Id))
+                .ToListAsync(cancellationToken));
+        }
         return [.. entries.Select(e => new AuditEntryResponse(e.OccurredAt, e.StaffId, e.Action, e.EntityType, e.EntityId,
             e.Detail, e.Changes is null ? null : JsonDocument.Parse(e.Changes).RootElement.Clone()))];
     }

@@ -117,6 +117,22 @@ public class ResidentRecordTests
         Assert.Equal("Patients.NotResident", result.Error.Code);
     }
 
+    [Theory]
+    [InlineData(ResidencyStatus.Discharged)]
+    [InlineData(ResidencyStatus.Deceased)]
+    public void A_resident_who_has_left_the_home_cannot_be_recorded_as_away(ResidencyStatus left)
+    {
+        // A hospital stay recorded after a death would have the missed-dose job write
+        // "In hospital" against every dose after it.
+        var patient = Resident();
+        _ = left == ResidencyStatus.Discharged ? patient.Discharge(Monday, null, Manager) : patient.RecordDeath(Monday, Manager);
+
+        var result = patient.StartAbsence(AbsenceKind.Hospital, Monday.AddDays(1), null, Manager);
+
+        Assert.Equal("Patients.NotResident", result.Error.Code);
+        Assert.Empty(patient.Absences);
+    }
+
     [Fact]
     public void A_discharged_resident_can_be_readmitted_but_one_who_died_cannot()
     {
@@ -125,8 +141,8 @@ public class ResidentRecordTests
         var died = Resident();
         died.RecordDeath(Monday, Manager);
 
-        var back = discharged.Readmit(new DateOnly(2026, 11, 20), Manager, Monday.AddDays(4));
-        var refused = died.Readmit(new DateOnly(2026, 11, 20), Manager, Monday.AddDays(4));
+        var back = discharged.Readmit(Monday.AddDays(4), Manager, Monday.AddDays(4));
+        var refused = died.Readmit(Monday.AddDays(4), Manager, Monday.AddDays(4));
 
         Assert.True(back.IsSuccess);
         Assert.Equal(ResidencyStatus.Current, discharged.Residency);
@@ -143,12 +159,39 @@ public class ResidentRecordTests
         var patient = Resident();
         patient.Discharge(Monday, null, Manager);
 
-        patient.Readmit(new DateOnly(2026, 11, 20), Manager, Monday.AddDays(4));
+        patient.Readmit(Monday.AddDays(4), Manager, Monday.AddDays(4));
 
         var away = Assert.Single(patient.Absences);
         Assert.Equal(AbsenceKind.Discharged, away.Kind);
         Assert.Equal(Monday, away.StartedAt);
         Assert.Equal(Monday.AddDays(4), away.EndedAt);
+    }
+
+    [Fact]
+    public void Readmission_ends_the_time_away_when_the_resident_came_back_not_when_it_was_entered()
+    {
+        // Back at 10:00 and entered at 15:00: a dose given at 12:00 must still be signable.
+        var patient = Resident();
+        patient.Discharge(Monday, null, Manager);
+        var back = Monday.AddDays(4);
+
+        patient.Readmit(back, Manager, back.AddHours(5));
+
+        Assert.Equal(back, Assert.Single(patient.Absences).EndedAt);
+        Assert.Equal(DateOnly.FromDateTime(back), patient.AdmittedOn);
+    }
+
+    [Fact]
+    public void A_return_before_the_discharge_is_refused()
+    {
+        var patient = Resident();
+        patient.Discharge(Monday, null, Manager);
+
+        var result = patient.Readmit(Monday.AddHours(-1), Manager, Monday.AddDays(1));
+
+        Assert.Equal("Patients.ReturnBeforeLeaving", result.Error.Code);
+        Assert.Equal(ResidencyStatus.Discharged, patient.Residency);
+        Assert.Empty(patient.Absences);
     }
 
     [Fact]
@@ -204,12 +247,25 @@ public class ResidentRecordServiceTests
     private sealed class Repository(Patient patient, bool nhsNumberInUse = false) : VCare.Modules.Patients.Application.Abstractions.IPatientRepository
     {
         public int Saves { get; private set; }
+
+        /// <summary>The save fails; with <see cref="AnotherResidentTakesTheNhsNumber"/>, because the number was just taken.</summary>
+        public bool SaveFails { get; set; }
+        public bool AnotherResidentTakesTheNhsNumber { get; set; }
         public Task<Patient?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
             Task.FromResult(id == patient.Id.Value ? patient : null);
         public Task<IReadOnlyList<Patient>> ListAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<Patient>>([patient]);
         public Task AddAsync(Patient p, CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task SaveChangesAsync(CancellationToken cancellationToken = default) { Saves++; return Task.CompletedTask; }
+        public Task SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            if (SaveFails)
+            {
+                nhsNumberInUse = AnotherResidentTakesTheNhsNumber;
+                throw new Microsoft.EntityFrameworkCore.DbUpdateException("The save was refused.");
+            }
+            Saves++;
+            return Task.CompletedTask;
+        }
         public Task<bool> OwnsStorageKeyAsync(Guid patientId, string storageKey, CancellationToken cancellationToken = default) =>
             Task.FromResult(false);
         public Task<bool> NhsNumberInUseAsync(string nhsNumber, Guid exceptPatientId, CancellationToken cancellationToken = default) =>
@@ -250,6 +306,31 @@ public class ResidentRecordServiceTests
     }
 
     [Fact]
+    public async Task An_nhs_number_taken_by_another_resident_while_saving_is_still_refused_as_in_use()
+    {
+        // Two admins enter one NHS number for two residents at once: both checks
+        // pass, and the database's unique index refuses the second save.
+        var (patient, repository, service) = World();
+        repository.SaveFails = true;
+        repository.AnotherResidentTakesTheNhsNumber = true;
+
+        var result = await service.UpdateCareDetailsAsync(patient.Id.Value,
+            new UpdateCareDetailsRequest("943 476 5919", null, null, null, null, null), CancellationToken.None);
+
+        Assert.Equal("Patients.NhsNumberInUse", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task A_failed_save_is_not_blamed_on_an_nhs_number_nobody_else_has()
+    {
+        var (patient, repository, service) = World();
+        repository.SaveFails = true;
+
+        await Assert.ThrowsAsync<Microsoft.EntityFrameworkCore.DbUpdateException>(() => service.UpdateCareDetailsAsync(patient.Id.Value,
+            new UpdateCareDetailsRequest("943 476 5919", null, null, null, null, null), CancellationToken.None));
+    }
+
+    [Fact]
     public async Task A_discharge_with_no_time_happens_now_in_the_home()
     {
         var (patient, _, service) = World();
@@ -270,6 +351,31 @@ public class ResidentRecordServiceTests
 
         Assert.Equal("Patients.InFuture", result.Error.Code);
         Assert.Equal(ResidencyStatus.Current, patient.Residency);
+    }
+
+    [Fact]
+    public async Task A_readmission_with_no_time_happens_now_in_the_home()
+    {
+        var (patient, _, service) = World();
+        patient.Discharge(Now.AddDays(-3), null, Manager);
+
+        var result = await service.ReadmitAsync(patient.Id.Value, new ReadmitRequest(null), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(Now, Assert.Single(patient.Absences).EndedAt);
+        Assert.Equal(DateOnly.FromDateTime(Now), patient.AdmittedOn);
+    }
+
+    [Fact]
+    public async Task A_readmission_cannot_be_recorded_in_advance()
+    {
+        var (patient, _, service) = World();
+        patient.Discharge(Now.AddDays(-3), null, Manager);
+
+        var result = await service.ReadmitAsync(patient.Id.Value, new ReadmitRequest(Now.AddHours(2)), CancellationToken.None);
+
+        Assert.Equal("Patients.InFuture", result.Error.Code);
+        Assert.Equal(ResidencyStatus.Discharged, patient.Residency);
     }
 
     [Fact]

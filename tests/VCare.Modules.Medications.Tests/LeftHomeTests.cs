@@ -28,6 +28,21 @@ public class LeftHomeTests
     }
 
     [Fact]
+    public async Task A_death_outweighs_a_hospital_stay_that_overlaps_it()
+    {
+        // Patients now refuses an absence after a resident has left, but a record
+        // made before that rule may still overlap one. Nothing goes on the MAR after the death.
+        var world = new MedicationWorld(At(20, 9, 30));
+        world.AddDailyOrder(new DateOnly(2026, 11, 19), At(18, 18), new TimeOnly(8, 0));
+        world.Absences.Add(new ResidentAbsence(MedicationWorld.Resident, AbsenceKind.Hospital, At(19, 7), null));
+        world.Absences.Add(new ResidentAbsence(MedicationWorld.Resident, AbsenceKind.Deceased, At(19, 7, 30), null));
+
+        await world.Recorder.RecordMissedDosesAsync(CancellationToken.None);
+
+        Assert.Empty(world.Administrations.Saved);
+    }
+
+    [Fact]
     public async Task A_dose_due_after_the_resident_left_cannot_be_signed()
     {
         var world = new MedicationWorld(At(19, 8, 10));

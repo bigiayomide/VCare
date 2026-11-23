@@ -18,6 +18,7 @@ internal sealed class ResidentRecordService(IPatientRepository repository, ICurr
     private static readonly TimeSpan ClockTolerance = TimeSpan.FromMinutes(5);
 
     private static readonly Error PatientNotFound = Error.NotFound("Patients.NotFound", "Resident not found.");
+    private static readonly Error NhsNumberInUse = Error.Conflict("Patients.NhsNumberInUse", "Another resident in this home has that NHS number.");
 
     public async Task<Result<AllergiesResponse>> GetAllergiesAsync(Guid patientId, CancellationToken token)
     {
@@ -109,8 +110,19 @@ internal sealed class ResidentRecordService(IPatientRepository repository, ICurr
             return updated;
         // Two records with one NHS number is how a resident's medicines end up on the wrong chart.
         if (patient.NhsNumber is { } nhs && await repository.NhsNumberInUseAsync(nhs, patientId, token))
-            return Result.Failure(Error.Conflict("Patients.NhsNumberInUse", "Another resident in this home has that NHS number."));
-        await repository.SaveChangesAsync(token);
+            return Result.Failure(NhsNumberInUse);
+        try
+        {
+            await repository.SaveChangesAsync(token);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException) when (patient.NhsNumber is not null)
+        {
+            // Another resident was given the number between the check and this save,
+            // and the database's unique index refused it. Any other failure is still an error.
+            if (await repository.NhsNumberInUseAsync(patient.NhsNumber, patientId, CancellationToken.None))
+                return Result.Failure(NhsNumberInUse);
+            throw;
+        }
         return Result.Success();
     }
 
@@ -157,8 +169,14 @@ internal sealed class ResidentRecordService(IPatientRepository repository, ICurr
         return await MutateAsync(patientId, (patient, _) => patient.RecordDeath(at, currentUser.UserId), token);
     }
 
-    public Task<Result> ReadmitAsync(Guid patientId, ReadmitRequest request, CancellationToken token) =>
-        MutateAsync(patientId, (patient, now) => patient.Readmit(request.AdmittedOn, currentUser.UserId, now), token);
+    public async Task<Result> ReadmitAsync(Guid patientId, ReadmitRequest request, CancellationToken token)
+    {
+        var now = await NowAsync(token);
+        var at = request.At ?? now;
+        if (at > now + ClockTolerance)
+            return Result.Failure(InFuture("A readmission"));
+        return await MutateAsync(patientId, (patient, _) => patient.Readmit(at, currentUser.UserId, now), token);
+    }
 
     public async Task<Result<IReadOnlyList<AttorneyResponse>>> GetAttorneysAsync(Guid patientId, CancellationToken token)
     {

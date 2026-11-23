@@ -125,6 +125,26 @@ public class RowLevelSecurityTests(SqlServerFixture sql)
         Assert.Single(asTheJob);
     }
 
+    [Fact]
+    public async Task A_signed_in_admin_can_register_another_care_home()
+    {
+        // Registration is open to anyone, so a token sent with it must not pin the
+        // connection to the sender's home: the new home and its admin are another's.
+        var oak = await sql.Homes.GetAsync("Oak House");
+
+        var registered = await oak.Admin.PostAsJsonAsync("/api/carehome", new
+        {
+            careHome = new { name = "Ash House", address = "2 High Street", email = "office.ashhouse@home.test", timeZoneId = "Europe/London" },
+            admin = new
+            {
+                firstName = "Ash", lastName = "Admin", email = "admin.ashhouse@home.test", phoneNumber = "07000000002",
+                address = "2 High Street", userName = "admin.ashhouse", password = TestHome.Password,
+            },
+        });
+
+        Assert.Equal(HttpStatusCode.Created, registered.StatusCode);
+    }
+
     private static ClaimsPrincipal Caller(TestHome home) =>
         new(new ClaimsIdentity(
         [

@@ -111,28 +111,36 @@ internal sealed class Patient : AggregateRoot<PatientId>, IAudited
     /// <summary>The resident died. Medications expects no dose after this.</summary>
     public Result RecordDeath(DateTime at, Guid staffId) => Leave(ResidencyStatus.Deceased, at, staffId);
 
-    /// <summary>A discharged resident comes back, or a discharge is undone.</summary>
-    public Result Readmit(DateOnly admittedOn, Guid staffId, DateTime at)
+    /// <summary>
+    /// A discharged resident comes back, or a discharge is undone. <paramref name="returnedAt"/>
+    /// is when they came back, which can be before it is entered: doses from then on
+    /// are the home's again. It is also their new admission date.
+    /// </summary>
+    public Result Readmit(DateTime returnedAt, Guid staffId, DateTime at)
     {
         if (Residency != ResidencyStatus.Discharged)
             return Result.Failure(Error.Conflict("Patients.NotDischarged", "Only a discharged resident can be readmitted."));
+        if (returnedAt < LeftAt)
+            return Result.Failure(Error.Validation("Patients.ReturnBeforeLeaving", "The return cannot be before the discharge."));
         // The time away stays on the record as a closed absence, so doses due while
         // they were discharged are still not counted as missed.
         var away = PatientAbsence.Start(Id, AbsenceKind.Discharged, LeftAt!.Value, DischargeDestination, staffId);
-        away.End(at, staffId);
+        away.End(returnedAt, staffId);
         Absences.Add(away);
         Residency = ResidencyStatus.Current;
         LeftAt = null;
         DischargeDestination = null;
-        AdmittedOn = admittedOn;
+        AdmittedOn = DateOnly.FromDateTime(returnedAt);
         ModifiedAt = at;
         return Result.Success();
     }
 
+    private static readonly Error NotResident = Error.Conflict("Patients.NotResident", "This resident has already left the home.");
+
     private Result Leave(ResidencyStatus status, DateTime at, Guid staffId)
     {
         if (Residency != ResidencyStatus.Current)
-            return Result.Failure(Error.Conflict("Patients.NotResident", "This resident has already left the home."));
+            return Result.Failure(NotResident);
         if (Absences.FirstOrDefault(a => a.IsOpen) is { } away)
         {
             if (at < away.StartedAt)
@@ -239,6 +247,9 @@ internal sealed class Patient : AggregateRoot<PatientId>, IAudited
 
     public Result<PatientAbsence> StartAbsence(AbsenceKind kind, DateTime startedAt, string? note, Guid staffId)
     {
+        // Once they have left, they are not the home's to send to hospital or on leave.
+        if (Residency != ResidencyStatus.Current)
+            return Result.Failure<PatientAbsence>(NotResident);
         if (Absences.Any(a => a.IsOpen))
             return Result.Failure<PatientAbsence>(Error.Conflict("Patients.AlreadyAway",
                 "This resident is already recorded as away. Record their return first."));

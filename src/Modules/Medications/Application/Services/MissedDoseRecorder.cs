@@ -76,7 +76,11 @@ namespace Medications.Application.Services
 
                     foreach (var slot in unrecorded)
                     {
-                        var absence = away.FirstOrDefault(a => a.PatientId == order.PatientId.Value && a.Covers(slot.DueAt));
+                        // Having left the home outweighs a hospital stay or leave that overlaps it.
+                        var absence = away
+                            .Where(a => a.PatientId == order.PatientId.Value && a.Covers(slot.DueAt))
+                            .OrderByDescending(a => a.Kind is AbsenceKind.Discharged or AbsenceKind.Deceased)
+                            .FirstOrDefault();
                         if (absence is null)
                         {
                             missed.Add(MedicationAdministration.RecordMissed(order, slot.DueAt, MedicationAdministration.SystemStaffId, Note, now));
